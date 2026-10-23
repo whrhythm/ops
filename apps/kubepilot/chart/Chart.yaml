@@ -1,0 +1,22 @@
+apiVersion: v2
+name: kubepilot
+description: A Helm chart for KubePilot - K8S Operations Management Platform
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+
+keywords:
+  - kubernetes
+  - operations
+  - management
+  - monitoring
+
+maintainers:
+  - name: KubePilot Team
+    email: team@kubepilot.io
+
+home: https://github.com/kubepilot/kubepilot
+sources:
+  - https://github.com/kubepilot/kubepilot
+
+icon: https://kubepilot.io/logo.png

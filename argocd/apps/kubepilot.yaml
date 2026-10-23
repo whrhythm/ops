@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kubepilot
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  labels:
+    app.kubernetes.io/name: kubepilot
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/whrhythm/ops.git
+    targetRevision: main
+    path: apps/kubepilot/chart
+    helm:
+      valueFiles:
+        - /apps/kubepilot/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kubepilot
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true

@@ -1,0 +1,16 @@
+image:
+  repository: kubepilot/kubepilot
+  tag: latest
+
+database:
+  host: postgres
+  password: CHANGE_ME
+
+redis:
+  host: redis
+
+jwt:
+  secret: CHANGE_YOUR_JWT_SECRET
+
+ingress:
+  enabled: false

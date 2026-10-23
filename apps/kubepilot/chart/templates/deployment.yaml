@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kubepilot.fullname" . }}
+  labels:
+    {{- include "kubepilot.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kubepilot.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "kubepilot.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "kubepilot.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          env:
+            - name: KUBEPILOT_DATABASE_HOST
+              value: {{ .Values.database.host | quote }}
+            - name: KUBEPILOT_DATABASE_PORT
+              value: {{ .Values.database.port | quote }}
+            - name: KUBEPILOT_DATABASE_USERNAME
+              value: {{ .Values.database.username | quote }}
+            - name: KUBEPILOT_DATABASE_PASSWORD
+              value: {{ .Values.database.password | quote }}
+            - name: KUBEPILOT_DATABASE_DBNAME
+              value: {{ .Values.database.dbname | quote }}
+            - name: KUBEPILOT_REDIS_HOST
+              value: {{ .Values.redis.host | quote }}
+            - name: KUBEPILOT_REDIS_PORT
+              value: {{ .Values.redis.port | quote }}
+            - name: KUBEPILOT_JWT_SECRET
+              value: {{ .Values.jwt.secret | quote }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

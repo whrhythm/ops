@@ -1,0 +1,90 @@
+# Default values for kubepilot
+replicaCount: 1
+
+image:
+  repository: kubepilot/kubepilot
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: kubepilot.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Database configuration
+database:
+  host: "localhost"
+  port: 5432
+  username: "kubepilot"
+  password: "CHANGE_ME"
+  dbname: "kubepilot"
+
+# Redis configuration
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+
+# JWT configuration
+jwt:
+  secret: "CHANGE_YOUR_JWT_SECRET"
+  expireTime: "24h"
+
+# External PostgreSQL (if not using built-in)
+externalPostgreSQL:
+  enabled: false
+  host: ""
+  port: 5432
+  username: ""
+  password: ""
+  database: ""
+
+# PostgreSQL subchart
+postgresql:
+  enabled: true
+  auth:
+    username: kubepilot
+    password: kubepilot
+    database: kubepilot
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+
+# Redis subchart
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 2Gi
