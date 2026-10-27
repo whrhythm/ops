@@ -34,3 +34,5 @@ spec:
     {{- end }}
   selector:
     {{- include "kubepilot.selectorLabels" . | nindent 4 }}
+    # local patch: exclude node-agent pods (same name/instance labels) from the Service
+    app.kubernetes.io/component: server

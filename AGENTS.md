@@ -19,7 +19,8 @@ Waves are set via the `argocd.argoproj.io/sync-wave` annotation on each `Applica
 ## KubePilot
 
 - Upstream: https://github.com/bwalia/kubepilot (Go module `github.com/kubepilot/kubepilot`), pinned at commit `930f0b5f507a6896e59f63294fcdf67a1ecf075c`.
-- Chart: `apps/kubepilot/chart/` is a verbatim copy of the official Helm chart from upstream `charts/kubepilot/` (chart v0.4.0). Do not edit chart files locally; to upgrade, re-copy from upstream at a new commit and update the SHA in this file.
+- Chart: `apps/kubepilot/chart/` is a copy of the official Helm chart from upstream `charts/kubepilot/` (chart v0.4.0). To upgrade, re-copy from upstream at a new commit and update the SHA in this file — **and re-apply the local patch below** (or drop it once upstream fixes it).
+- Local patch (upstream bug, chart v0.4.0): the Service selector (`kubepilot.selectorLabels`) only matches `name`+`instance`, so it also selects the `nodeAgent` DaemonSet pods (they carry the same labels). Real traffic is unaffected (the node-agent pods lack the named target ports and never become ready endpoints), but `kubectl port-forward svc/kubepilot` picks a node-agent pod and fails. Fix: `app.kubernetes.io/component: server` added to the Deployment's `spec.selector.matchLabels`, the pod template labels, and the Service selector (marked with `# local patch:` comments in `templates/deployment.yaml` and `templates/service.yaml`).
 - Config: `apps/kubepilot/values.yaml` is the only file changed in day-to-day operations. The Application references it via `helm.valueFiles: ["/apps/kubepilot/values.yaml"]` — the leading slash means relative to the repo root (ArgoCD resolves `/`-prefixed value file paths against the repo root).
 - The app is stateless: no PostgreSQL/Redis. LLM calls go to an OpenAI-compatible endpoint (`kubepilot.ollamaBaseURL` — works with Ollama or a litellm proxy; model via `kubepilot.ollamaModel`).
 - Secrets (this repo is public — never commit real secrets):

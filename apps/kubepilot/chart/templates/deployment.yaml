@@ -10,10 +10,13 @@ spec:
   selector:
     matchLabels:
       {{- include "kubepilot.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
   template:
     metadata:
       labels:
         {{- include "kubepilot.selectorLabels" . | nindent 8 }}
+        # local patch: exclude node-agent pods (same name/instance labels) from the Service
+        app.kubernetes.io/component: server
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
