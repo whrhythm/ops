@@ -64,6 +64,12 @@ spec:
               value: {{ .Values.redis.port | quote }}
             - name: KUBEPILOT_JWT_SECRET
               value: {{ .Values.jwt.secret | quote }}
+            - name: LLM_BASE_URL
+              value: {{ .Values.llm.baseUrl | quote }}
+            - name: LLM_MODEL
+              value: {{ .Values.llm.model | quote }}
+            - name: LLM_API_KEY
+              value: {{ .Values.llm.apiKey | quote }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}
