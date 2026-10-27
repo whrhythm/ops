@@ -1,5 +1,5 @@
 image:
-  repository: kubepilot/kubepilot
+  repository: ghcr.io/kubepilot/kubepilot
   tag: latest
 
 database:
