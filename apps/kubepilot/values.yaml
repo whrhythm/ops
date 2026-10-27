@@ -2,20 +2,25 @@ image:
   repository: ghcr.io/kubepilot/kubepilot
   tag: latest
 
-database:
-  host: postgres
-  password: CHANGE_ME
+kubepilot:
+  # OpenAI-compatible endpoint (Ollama or a litellm proxy).
+  # Repo is public — keep this a test endpoint; never commit a real key inline.
+  ollamaBaseURL: http://192.168.10.30:4000/v1
+  ollamaModel: glm-5.3-flash
+  # API key is read from a Secret (never inline). Create once:
+  #   kubectl create secret generic kubepilot-llm -n kubepilot --from-literal=api-key=<key>
+  ollamaAPIKeySecret:
+    name: kubepilot-llm
+    key: api-key
+  auth:
+    enabled: true
+    username: admin
+    # Placeholder — replace at deploy time, e.g.:
+    #   helm/argocd --set kubepilot.auth.password=<real>
+    # or set kubepilot.auth.existingSecret to a pre-created Secret.
+    password: CHANGE_ME
 
-redis:
-  host: redis
-
-jwt:
-  secret: CHANGE_YOUR_JWT_SECRET
-
-llm:
-  baseUrl: http://192.168.10.30:4000/v1
-  model: glm-5.3-flash
-  apiKey: sk-1234
-
-ingress:
-  enabled: false
+rbac:
+  # Namespace for CR-code Secrets does not exist in this cluster; skip the
+  # extra Role (cost: /crcode endpoints unavailable).
+  crCodeNamespace: ""

@@ -2,14 +2,35 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "kubepilot.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "kubepilot.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   type: {{ .Values.service.type }}
   ports:
-    - port: {{ .Values.service.port }}
-      targetPort: http
+    - port: {{ .Values.service.dashboardPort }}
+      targetPort: dashboard
       protocol: TCP
-      name: http
+      name: dashboard
+      {{- if and (eq .Values.service.type "NodePort") .Values.service.nodePorts.dashboard }}
+      nodePort: {{ .Values.service.nodePorts.dashboard }}
+      {{- end }}
+    - port: {{ .Values.service.mcpPort }}
+      targetPort: mcp
+      protocol: TCP
+      name: mcp
+      {{- if and (eq .Values.service.type "NodePort") .Values.service.nodePorts.mcp }}
+      nodePort: {{ .Values.service.nodePorts.mcp }}
+      {{- end }}
+    {{- if .Values.metrics.enabled }}
+    - port: {{ .Values.operator.metricsPort }}
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+    {{- end }}
   selector:
     {{- include "kubepilot.selectorLabels" . | nindent 4 }}

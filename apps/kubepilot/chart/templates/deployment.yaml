@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "kubepilot.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "kubepilot.labels" . | nindent 4 }}
 spec:
@@ -11,10 +12,6 @@ spec:
       {{- include "kubepilot.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      annotations:
-        {{- with .Values.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
       labels:
         {{- include "kubepilot.selectorLabels" . | nindent 8 }}
     spec:
@@ -23,64 +20,154 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "kubepilot.serviceAccountName" . }}
+      automountServiceAccountToken: true
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: {{ .Chart.Name }}
-          securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
+        - name: kubepilot
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          args:
+            - serve
+            - --dashboard-port={{ .Values.service.dashboardPort }}
+            - --mcp-port={{ .Values.service.mcpPort }}
+            - --log-level={{ .Values.kubepilot.logLevel }}
+            - --ollama-base-url={{ .Values.kubepilot.ollamaBaseURL }}
+            - --ollama-model={{ .Values.kubepilot.ollamaModel }}
+            {{- if .Values.kubepilot.enableActionMutations }}
+            - --enable-action-mutations
+            {{- end }}
+            {{- if .Values.kubepilot.auth.enabled }}
+            - --dashboard-auth-enabled
+            {{- end }}
+            - --metrics-enabled={{ .Values.metrics.enabled }}
+            - --metrics-require-auth={{ .Values.metrics.requireAuth }}
+            {{- with .Values.kubepilot.otel }}
+            {{- if .endpoint }}
+            - --otel-endpoint={{ .endpoint }}
+            - --otel-protocol={{ .protocol }}
+            - --otel-insecure={{ .insecure }}
+            - --otel-sample-ratio={{ .sampleRatio }}
+            - --otel-metric-interval={{ .metricInterval }}
+            {{- end }}
+            - --otel-service-name={{ .serviceName }}
+            {{- if .serviceNamespace }}
+            - --otel-service-namespace={{ .serviceNamespace }}
+            {{- end }}
+            - --otel-environment={{ .environment | default $.Release.Namespace }}
+            {{- end }}
+            {{- if .Values.otelAutopilot.enabled }}
+            - --otel-autopilot-mode={{ .Values.otelAutopilot.mode }}
+            - --otel-autopilot-managed-store={{ .Values.otelAutopilot.managedStore.enabled }}
+            {{- if .Values.otelAutopilot.export.metrics.remoteWrite.url }}
+            - --otel-export-metrics-remote-write-url={{ .Values.otelAutopilot.export.metrics.remoteWrite.url }}
+            {{- end }}
+            {{- if .Values.otelAutopilot.export.otlp.endpoint }}
+            - --otel-export-otlp-endpoint={{ .Values.otelAutopilot.export.otlp.endpoint }}
+            {{- if .Values.otelAutopilot.export.otlp.insecure }}
+            - --otel-export-otlp-insecure
+            {{- end }}
+            {{- end }}
+            {{- end }}
+          env:
+            # Pod identity for the telemetry resource, read via WithFromEnv.
+            # Supplying it here rather than in the chart's values means a span
+            # always names the exact pod that produced it, across restarts and
+            # rescheduling.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(POD_NAMESPACE),k8s.node.name=$(NODE_NAME)"
+            {{- if .Values.kubepilot.ollamaAPIKeySecret.name }}
+            - name: KUBEPILOT_OLLAMA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.kubepilot.ollamaAPIKeySecret.name }}
+                  key: {{ .Values.kubepilot.ollamaAPIKeySecret.key }}
+            {{- end }}
+            {{- if .Values.kubepilot.auth.enabled }}
+            {{- $authSecret := .Values.kubepilot.auth.existingSecret | default (printf "%s-auth" (include "kubepilot.fullname" .)) }}
+            - name: KUBEPILOT_DASHBOARD_AUTH_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $authSecret }}
+                  key: username
+                  optional: true
+            - name: KUBEPILOT_DASHBOARD_AUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $authSecret }}
+                  key: password
+                  optional: true
+            - name: KUBEPILOT_DASHBOARD_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $authSecret }}
+                  key: token
+                  optional: true
+            - name: KUBEPILOT_OTEL_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $authSecret }}
+                  key: ingestToken
+                  optional: true
+            {{- end }}
           ports:
-            - name: http
-              containerPort: 8080
+            - name: dashboard
+              containerPort: {{ .Values.service.dashboardPort }}
+              protocol: TCP
+            - name: mcp
+              containerPort: {{ .Values.service.mcpPort }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.operator.metricsPort }}
               protocol: TCP
           livenessProbe:
             httpGet:
-              path: /health
-              port: http
-            initialDelaySeconds: 30
-            periodSeconds: 10
+              path: /healthz
+              port: dashboard
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /health
-              port: http
+              path: /healthz
+              port: dashboard
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: dashboard
             initialDelaySeconds: 5
             periodSeconds: 5
-          env:
-            - name: KUBEPILOT_DATABASE_HOST
-              value: {{ .Values.database.host | quote }}
-            - name: KUBEPILOT_DATABASE_PORT
-              value: {{ .Values.database.port | quote }}
-            - name: KUBEPILOT_DATABASE_USERNAME
-              value: {{ .Values.database.username | quote }}
-            - name: KUBEPILOT_DATABASE_PASSWORD
-              value: {{ .Values.database.password | quote }}
-            - name: KUBEPILOT_DATABASE_DBNAME
-              value: {{ .Values.database.dbname | quote }}
-            - name: KUBEPILOT_REDIS_HOST
-              value: {{ .Values.redis.host | quote }}
-            - name: KUBEPILOT_REDIS_PORT
-              value: {{ .Values.redis.port | quote }}
-            - name: KUBEPILOT_JWT_SECRET
-              value: {{ .Values.jwt.secret | quote }}
-            - name: LLM_BASE_URL
-              value: {{ .Values.llm.baseUrl | quote }}
-            - name: LLM_MODEL
-              value: {{ .Values.llm.model | quote }}
-            - name: LLM_API_KEY
-              value: {{ .Values.llm.apiKey | quote }}
+            failureThreshold: 12
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
       {{- with .Values.tolerations }}
       tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}

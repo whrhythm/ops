@@ -22,21 +22,12 @@ Create a default fully qualified app name.
 {{- end }}
 
 {{/*
-Create chart name and version as used by the chart label.
-*/}}
-{{- define "kubepilot.chart" -}}
-{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
-{{- end }}
-
-{{/*
 Common labels
 */}}
 {{- define "kubepilot.labels" -}}
 helm.sh/chart: {{ include "kubepilot.chart" . }}
 {{ include "kubepilot.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-{{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
@@ -49,7 +40,14 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-Create the name of the service account to use
+Chart name+version label
+*/}}
+{{- define "kubepilot.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+ServiceAccount name
 */}}
 {{- define "kubepilot.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}

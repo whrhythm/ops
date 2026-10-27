@@ -1,22 +1,22 @@
 apiVersion: v2
 name: kubepilot
-description: A Helm chart for KubePilot - K8S Operations Management Platform
+description: AI-driven Kubernetes autopilot — pod analysis, troubleshooting, and observability dashboard
 type: application
-version: 0.1.0
-appVersion: "1.0.0"
-
+version: 0.4.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.25.0-0"
 keywords:
   - kubernetes
-  - operations
-  - management
-  - monitoring
-
-maintainers:
-  - name: KubePilot Team
-    email: team@kubepilot.io
-
-home: https://github.com/kubepilot/kubepilot
+  - ai
+  - automation
+  - observability
+  - troubleshooting
+  - pod-analysis
+  - incident-response
+home: https://github.com/bwalia/kubepilot
 sources:
-  - https://github.com/kubepilot/kubepilot
-
-icon: https://kubepilot.io/logo.png
+  - https://github.com/bwalia/kubepilot
+maintainers:
+  - name: KubePilot Authors
+    url: https://github.com/bwalia
+icon: https://raw.githubusercontent.com/bwalia/kubepilot/master/docs/logo.png

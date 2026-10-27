@@ -1,3 +1,0 @@
-[submodule "kubepilot"]
-	path = kubepilot
-	url = https://github.com/bwalia/kubepilot.git
