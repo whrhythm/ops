@@ -46,20 +46,13 @@ spec:
               tenantDefaultServiceAccount: "default"
               skipTlsVerify: false
               caSecretKey: "ca.crt"
-    ignoreDifferences:
-      # cert-manager injects the webhook CA bundle into the live conversion
-      # config of the patched CRDs (live-only field -> would flap OutOfSync).
-      - group: apiextensions.k8s.io
-        kind: CustomResourceDefinition
-        jsonPointers:
-          - /spec/conversion/webhook/clientConfig/caBundle
-      # The chart template has no hook for spec.events; the API server
-      # always materializes the CRD default ({namespace: default}) in the
-      # live CapsuleConfiguration, which the manifest cannot express.
-      - group: capsule.clastix.io
-        kind: CapsuleConfiguration
-        jsonPointers:
-          - /spec/events
+    # NOTE: no ignoreDifferences under source — this ArgoCD (2.12.3)
+    # Application CRD has no spec.source.ignoreDifferences (it lives at
+    # spec level); a field placed here is silently pruned on write and
+    # would keep the app-of-apps parent permanently OutOfSync. Not needed
+    # anyway: the classic diff ignores live-only fields (server-defaulted
+    # spec.events, cert-manager-injected caBundle) and the SMD path (CRDs
+    # only) does not flag fields owned by other field managers.
   destination:
     server: https://kubernetes.default.svc
     namespace: capsule-system
