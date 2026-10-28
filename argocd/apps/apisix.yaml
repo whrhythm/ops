@@ -18,6 +18,11 @@ spec:
         etcd:
           # Built-in etcd is for dev/test only; single node runs one replica.
           replicaCount: 1
+          # This hook (meant for helm upgrades) deadlocks fresh ArgoCD
+          # installs: the Job mounts the release's JWT secret, which only
+          # exists after the release resources are applied.
+          preUpgradeJob:
+            enabled: false
   destination:
     server: https://kubernetes.default.svc
     namespace: apisix

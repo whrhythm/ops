@@ -1,0 +1,114 @@
+{{- if $.Values.gangplank.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gangplank.fullname" . }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "gangplank.labels" . | nindent 4 }}
+  {{- with .Values.gangplank.annotations }}
+  annotations:
+    {{- . | toYaml | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.gangplank.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "gangplank.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- if or .Values.gangplank.podAnnotations .Values.global.openshift.enabled }}
+      annotations:
+        {{- with .Values.gangplank.podAnnotations }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with include "capsule-proxy.openshiftAnnotations" $ }}
+          {{- . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      labels:
+        {{- include "gangplank.labels" . | nindent 8 }}
+        {{- with .Values.gangplank.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.gangplank.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "gangplank.serviceAccountName" . }}
+      {{- if include "capsule-proxy.hostUsersDisabled" (dict "hostUsers" .Values.gangplank.hostUsers "root" $) }}
+      hostUsers: false
+      {{- end }}
+      {{- if include "capsule-proxy.securityContextEnabled" (dict "enabled" .Values.gangplank.podSecurityContext.enabled "root" $) }}
+      securityContext:
+        {{- omit .Values.gangplank.podSecurityContext "enabled" | toYaml | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- if include "capsule-proxy.securityContextEnabled" (dict "enabled" .Values.gangplank.securityContext.enabled "root" $) }}
+          securityContext:
+            {{- omit .Values.gangplank.securityContext "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.gangplank.image.repository }}:{{ .Values.gangplank.image.tag }}"
+          imagePullPolicy: {{ .Values.gangplank.image.pullPolicy }}
+          command:
+            - "gangplank"
+            - "-config"
+            - "/etc/gangplank/config.yaml"
+          envFrom:
+            - secretRef:
+                name: {{ include "gangplank.fullname" . }}
+            {{- if .Values.gangplank.envFrom }}
+              {{- toYaml .Values.gangplank.envFrom | nindent 12 }}
+            {{- end }}
+          {{- if .Values.envs }}
+          env:
+            {{- range $key, $val := .Values.gangplank.envs }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml .Values.gangplank.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.gangplank.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.gangplank.resources | nindent 12 }}
+          volumeMounts:
+            - name: gangplank
+              mountPath: /etc/gangplank
+              readOnly: true
+          {{- with .Values.gangplank.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: gangplank
+          configMap:
+            name: {{ include "gangplank.fullname" $ }}
+      {{- with .Values.gangplank.volumes }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gangplank.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gangplank.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gangplank.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gangplank.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      priorityClassName: {{ .Values.gangplank.priorityClassName }}
+{{- end }}

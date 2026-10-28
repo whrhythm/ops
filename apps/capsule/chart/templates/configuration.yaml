@@ -1,0 +1,1843 @@
+{{- if or (and $.Values.crds.exclusive $.Values.crds.createConfig) (not $.Values.crds.exclusive) }}
+  {{- if $.Values.manager.options.createConfiguration }}
+apiVersion: capsule.clastix.io/v1beta2
+kind: CapsuleConfiguration
+metadata:
+  name: {{ .Values.manager.options.capsuleConfiguration }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+  {{- include "capsule.labels" . | nindent 4 }}
+  {{- with .Values.manager.options.labels }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  annotations:
+  {{- with (mergeOverwrite .Values.customAnnotations .Values.manager.options.annotations) }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  cacheInvalidation: {{ .Values.manager.options.cacheInvalidation }}
+  rbac:
+    {{- toYaml .Values.manager.options.rbac | nindent 4 }}
+  {{- with .Values.manager.options.impersonation }}
+  impersonation:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  administrators:
+    {{- toYaml .Values.manager.options.administrators | nindent 4 }}
+  users:
+    {{- toYaml .Values.manager.options.users | nindent 4 }}
+    {{- range $_, $subject :=  .Values.manager.options.userNames }}
+    - kind: "User"
+      name: {{ $subject | quote }}
+    {{- end }}
+    {{- range $_, $subject :=  .Values.manager.options.capsuleUserGroups }}
+    - kind: "Group"
+      name: {{ $subject | quote }}
+    {{- end }}
+  enableTLSReconciler: {{ .Values.tls.enableController }}
+  overrides:
+    mutatingWebhookConfigurationName: {{ include "capsule.fullname" . }}-mutating-webhook-configuration
+    TLSSecretName: {{ include "capsule.secretTlsName" . }}
+    validatingWebhookConfigurationName: {{ include "capsule.fullname" . }}-validating-webhook-configuration
+  forceTenantPrefix: {{ .Values.manager.options.forceTenantPrefix }}
+  allowServiceAccountPromotion: {{ .Values.manager.options.allowServiceAccountPromotion }}
+  ignoreUserWithGroups:
+    {{- toYaml .Values.manager.options.ignoreUserWithGroups | nindent 4 }}
+  protectedNamespaceRegex: {{ .Values.manager.options.protectedNamespaceRegex | quote }}
+  {{- with .Values.manager.options.nodeMetadata }}
+  nodeMetadata:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  admission:
+    serviceName: {{ include "capsule.fullname" . }}-webhook-service
+    validating:
+      name: "{{ include "capsule.fullname" . }}-dynamic-webhook"
+      client:
+        {{- include "capsule.webhooks.serviceConfig" $ | nindent 8 }}
+      {{- if (include "admission.labels" $) }}
+      labels:
+        {{- include "admission.labels" $ | nindent 8 }}
+      {{- end }}
+      {{- if (include "admission.annotations" $) }}
+      annotations:
+        {{- include "admission.annotations" $ | nindent 8 }}
+      {{- end }}
+      webhooks:
+      {{- $anyValidating := false -}}
+      {{- with .Values.webhooks.hooks.generic }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: generic.rules.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/rules/generic/validating"
+        failurePolicy:  {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          {{- toYaml .rules |  nindent 10 }}
+        sideEffects: NoneOnDryRun
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.namespaces }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: namespaces.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/namespaces/validating"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+              - ""
+            apiVersions:
+              - v1
+            operations:
+              - CREATE
+              - UPDATE
+              - DELETE
+            resources:
+              - namespaces
+              - namespaces/status
+              - namespaces/finalize
+            scope: '*'
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.rulestatus }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: rulestatus.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/rulestatus/validating"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+              - capsule.clastix.io
+            apiVersions:
+              - v1beta2
+            operations:
+              - CREATE
+              - UPDATE
+              - DELETE
+            resources:
+              - rulestatuses
+            scope: 'Namespaced'
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.customresources }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: customresources.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/generic/customresources"
+        failurePolicy:  {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+              - '*'
+            apiVersions:
+              - '*'
+            operations:
+              - CREATE
+              - UPDATE
+              - DELETE
+            resources:
+              - '*'
+            scope: Namespaced
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.cordoning }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: cordoning.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/generic/cordoning"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .rules }}
+        rules:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.devices }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: devices.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/devices/validating"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+              - resource.k8s.io
+            apiVersions:
+              - v1
+              - v1beta2
+            operations:
+              - CREATE
+              - UPDATE
+            resources:
+              - resourceclaimtemplates
+              - resourceclaims
+            scope: Namespaced
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.gateways }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: gateway.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/gateways/validating"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+              - gateway.networking.k8s.io
+            apiVersions:
+              - v1
+            operations:
+              - CREATE
+              - UPDATE
+            resources:
+              - gateways
+            scope: Namespaced
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.ingresses }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: ingress.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/ingresses/validating"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+              - networking.k8s.io
+              - extensions
+            apiVersions:
+              - v1
+              - v1beta1
+            operations:
+              - CREATE
+              - UPDATE
+            resources:
+              - ingresses
+            scope: Namespaced
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.nodes }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: nodes.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/nodes/validating"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+              - ""
+            apiVersions:
+              - v1
+            operations:
+              - UPDATE
+            resources:
+              - nodes
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.pods }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: pods.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/pods/validating"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+              - ""
+            apiVersions:
+              - v1
+            operations:
+              - CREATE
+              - UPDATE
+            resources:
+              - pods
+              - pods/ephemeralcontainers
+            scope: Namespaced
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.persistentvolumeclaims }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: pvc.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/persistentvolumeclaims/validating"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        matchConditions:
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+          - name: skip-bound-pvc-updates
+            expression: >
+              request.operation != "UPDATE" ||
+              !has(oldObject.status.phase) ||
+              oldObject.status.phase != "Bound"
+          - name: requires-pvc-spec-validation
+            expression: >
+              request.operation != "UPDATE" ||
+              !has(object.metadata.deletionTimestamp) ||
+              object.spec != oldObject.spec
+        rules:
+          - apiGroups:
+              - ""
+            apiVersions:
+              - v1
+            operations:
+              - CREATE
+              - UPDATE
+            resources:
+              - persistentvolumeclaims
+            scope: Namespaced
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.services }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: services.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/services/validating"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+              - ""
+            apiVersions:
+              - v1
+            operations:
+              - CREATE
+              - UPDATE
+            resources:
+              - services
+            scope: Namespaced
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with (mergeOverwrite .Values.webhooks.hooks.managed .Values.webhooks.hooks.tenantResourceObjects) }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: managed.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+        path: "/generic/managed"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          {{- toYaml .rules | nindent 10 }}
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with  .Values.webhooks.hooks.replications }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: replications.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+        path: "/generic/replications"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- $explicitConditions := or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        {{- if and $.Values.openshift.etcdEncryption.enabled (not $explicitConditions) (or (dig "capsuleUsers" false (.opts | default dict)) (dig "administrators" false (.opts | default dict))) }}
+          {{- fail "openshift.etcdEncryption.enabled would replace the generated capsule-user-gate of the replications webhook; set explicit matchConditions for it" }}
+        {{- end }}
+        {{- if or $explicitConditions $.Values.openshift.etcdEncryption.enabled }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with include "capsule.openshiftEtcdEncryptionMatchConditions" $ }}
+          {{- . | nindent 10 }}
+        {{- end }}
+        rules:
+          {{- toYaml .rules | nindent 10 }}
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.tenants }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: tenants.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/tenants/validating"
+        failurePolicy:  {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+              - capsule.clastix.io
+            apiVersions:
+              - v1beta2
+            operations:
+              - CREATE
+              - UPDATE
+              - DELETE
+            resources:
+              - tenants
+            scope: 'Cluster'
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.owners }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: owners.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/tenantowners/validating"
+        failurePolicy:  {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+              - capsule.clastix.io
+            apiVersions:
+              - v1beta2
+            operations:
+              - CREATE
+              - UPDATE
+              - DELETE
+            resources:
+              - tenantowners
+            scope: 'Cluster'
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.resourcepools.pools }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: resourcepools.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/resourcepools/validating"
+        failurePolicy:  {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+            - "capsule.clastix.io"
+            apiVersions:
+            - "*"
+            operations:
+            - CREATE
+            - UPDATE
+            resources:
+            - resourcepools
+            scope: '*'
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.resourcepools.pools }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: resourcepoolclaims.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/resourcepools/claim/validating"
+        failurePolicy:  {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+            - "capsule.clastix.io"
+            apiVersions:
+            - "*"
+            operations:
+            - CREATE
+            - UPDATE
+            - DELETE
+            resources:
+            - resourcepoolclaims
+            scope: '*'
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.serviceaccounts }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: serviceaccounts.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/serviceaccounts/validating"
+        failurePolicy:  {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        matchConditions:
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+          - name: requires-promotion-label
+            expression: >
+              has(object.metadata.labels) &&
+              (
+                "projectcapsule.dev/promote" in object.metadata.labels ||
+                "owner.projectcapsule.dev/promote" in object.metadata.labels
+              )
+        rules:
+          - apiGroups:
+              - '*'
+            apiVersions:
+              - '*'
+            operations:
+              - CREATE
+              - UPDATE
+            resources:
+              - 'serviceaccounts'
+            scope: Namespaced
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+
+      # ServiceAccount references may point outside Tenant namespaces (for
+      # example, from a GlobalTenantResource).
+      # Keep deletion protection separate from promotion validation so it is
+      # not limited by the promotion label or Tenant namespace selectors.
+      - name: serviceaccount-references.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/serviceaccounts/references/validating"
+        failurePolicy: {{ .references.failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- if or $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+              - ""
+            apiVersions:
+              - v1
+            operations:
+              - DELETE
+            resources:
+              - serviceaccounts
+            scope: Namespaced
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.config }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: config.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/config/validating"
+        failurePolicy:  {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+              - capsule.clastix.io
+            apiVersions:
+              - v1beta2
+            operations:
+              - CREATE
+              - UPDATE
+            resources:
+              - capsuleconfigurations
+            scope: 'Cluster'
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.customquotas }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: namespaced.custom-quotas.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/custom-quotas/namespaced/validating"
+        failurePolicy:  {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          {{- toYaml .rules | nindent 10 }}
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.globalcustomquotas }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: cluster.custom-quotas.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/custom-quotas/cluster/validating"
+        failurePolicy:  {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          {{- toYaml .rules | nindent 10 }}
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+      {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.globalresourcequotas }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: calculation.global-resource-quotas.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/global-resource-quotas/calculations"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          {{- toYaml .rules | nindent 10 }}
+        sideEffects: NoneOnDryRun
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.calculations }}
+        {{- if .enabled }}
+          {{- $anyValidating = true }}
+      - name: calculation.custom-quotas.validating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/custom-quotas/calculations"
+        failurePolicy:  {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.validating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.validating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          {{- toYaml .rules | nindent 10 }}
+        sideEffects: NoneOnDryRun
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- if not $anyValidating }}
+        []
+      {{- end }}
+    mutating:
+      name: "{{ include "capsule.fullname" . }}-dynamic-webhook"
+      client:
+        {{- include "capsule.webhooks.serviceConfig" $ | nindent 8 }}
+      {{- if (include "admission.labels" $) }}
+      labels:
+        {{- include "admission.labels" $ | nindent 8 }}
+      {{- end }}
+      {{- if (include "admission.annotations" $) }}
+      annotations:
+        {{- include "admission.annotations" $ | nindent 8 }}
+      {{- end }}
+      webhooks:
+      {{- $anyMutating := false -}}
+      {{- with .Values.webhooks.hooks.replicationDefaults }}
+        {{- if .enabled }}
+          {{- $anyMutating = true }}
+      - name: replications.mutating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+        path: "/defaults"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        reinvocationPolicy: {{ .reinvocationPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.mutating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.mutating.matchConditions }}
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+              - capsule.clastix.io
+            apiVersions:
+              - v1beta2
+            operations:
+              - CREATE
+              - UPDATE
+            resources:
+              - tenantresources
+              - globaltenantresources
+            scope: '*'
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.mutatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.generic }}
+        {{- if .enabled }}
+          {{- $anyMutating = true }}
+      - name: generic.rules.mutating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/rules/generic/mutating"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        reinvocationPolicy: {{ .reinvocationPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        matchConditions:
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.mutating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+          - name: mutations-supported-subresources
+            expression: '!has(request.subResource) || request.subResource == "" || (request.subResource == "ephemeralcontainers" && request.operation == "UPDATE" && request.resource.group == "" && request.resource.resource == "pods")'
+        rules:
+          {{- toYaml .rules | nindent 10 }}
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.mutatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with (mergeOverwrite .Values.webhooks.hooks.namespaces .Values.webhooks.hooks.namespaceOwnerReference) }}
+        {{- if .enabled }}
+          {{- $anyMutating = true }}
+      - name: namespaces.mutating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/namespaces/mutating"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        reinvocationPolicy: {{ .reinvocationPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.mutating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.mutating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+              - ""
+            apiVersions:
+              - v1
+            operations:
+              - CREATE
+              - UPDATE
+            resources:
+              - namespaces
+              - namespaces/status
+              - namespaces/finalize
+            scope: '*'
+        sideEffects: NoneOnDryRun
+        timeoutSeconds: {{ $.Values.webhooks.mutatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+
+      {{- with .Values.webhooks.hooks.persistentvolumeclaims }}
+        {{- if .enabled }}
+          {{- $anyMutating = true }}
+      - name: pvc.mutating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/persistentvolumeclaims/mutating"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        reinvocationPolicy: {{ .reinvocationPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        matchConditions:
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.mutating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+          - name: requires-static-binding
+            expression: >
+              has(object.spec.selector) ||
+              (has(object.spec.volumeName) && object.spec.volumeName != "")
+        rules:
+          - apiGroups:
+              - ""
+            apiVersions:
+              - v1
+            operations:
+              - CREATE
+            resources:
+              - persistentvolumeclaims
+            scope: Namespaced
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.validatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+
+      {{- with (mergeOverwrite .Values.webhooks.hooks.pods .Values.webhooks.hooks.defaults.pods) }}
+        {{- if .enabled }}
+          {{- $anyMutating = true }}
+      - name: pod.mutating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+        - v1
+        path: "/defaults"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        reinvocationPolicy: {{ .reinvocationPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.mutating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.mutating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+        - apiGroups:
+          - ""
+          apiVersions:
+          - v1
+          operations:
+          - CREATE
+          resources:
+          - pods
+          scope: "Namespaced"
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.mutatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with (mergeOverwrite .Values.webhooks.hooks.persistentvolumeclaims .Values.webhooks.hooks.defaults.pvc) }}
+        {{- if .enabled }}
+          {{- $anyMutating = true }}
+      - name: storage.mutating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+        - v1
+        path: "/defaults"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        reinvocationPolicy: {{ .reinvocationPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.mutating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.mutating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+        - apiGroups:
+          - ""
+          apiVersions:
+          - v1
+          operations:
+          - CREATE
+          resources:
+          - persistentvolumeclaims
+          scope: "Namespaced"
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.mutatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with (mergeOverwrite .Values.webhooks.hooks.ingresses .Values.webhooks.hooks.defaults.ingress) }}
+        {{- if .enabled }}
+          {{- $anyMutating = true }}
+      - name: ingress.mutating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+        - v1
+        path: "/defaults"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        reinvocationPolicy: {{ .reinvocationPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.mutating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.mutating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+        - apiGroups:
+          - networking.k8s.io
+          apiVersions:
+          - v1beta1
+          - v1
+          operations:
+          - CREATE
+          - UPDATE
+          resources:
+          - ingresses
+          scope: "Namespaced"
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.mutatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.gateways }}
+        {{- if .enabled }}
+          {{- $anyMutating = true }}
+      - name: gateway.mutating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+        - v1
+        path: "/defaults"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        reinvocationPolicy: {{ .reinvocationPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.mutating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.mutating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+        - apiGroups:
+          - gateway.networking.k8s.io
+          apiVersions:
+          - v1
+          operations:
+          - CREATE
+          - UPDATE
+          resources:
+          - gateways
+          scope: "Namespaced"
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.mutatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.resourcepools.pools }}
+        {{- if .enabled }}
+          {{- $anyMutating = true }}
+      - name: resourcepools.mutating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/resourcepools/mutating"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        reinvocationPolicy: {{ .reinvocationPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.mutating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.mutating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+            - "capsule.clastix.io"
+            apiVersions:
+            - "*"
+            operations:
+              - CREATE
+              - UPDATE
+            resources:
+            - resourcepools
+            scope: '*'
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.mutatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.resourcepools.claims }}
+        {{- if .enabled }}
+          {{- $anyMutating = true }}
+      - name: resourcepoolclaims.mutating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/resourcepools/claim/mutating"
+        failurePolicy: {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        reinvocationPolicy: {{ .reinvocationPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.mutating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.mutating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+            - "capsule.clastix.io"
+            apiVersions:
+            - "*"
+            operations:
+            - CREATE
+            - UPDATE
+            resources:
+            - resourcepoolclaims
+            scope: '*'
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.mutatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.tenants }}
+        {{- if .enabled }}
+          {{- $anyMutating = true }}
+      - name: tenants.mutating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/tenants/mutating"
+        failurePolicy:  {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        reinvocationPolicy: {{ .reinvocationPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.mutating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.mutating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          - apiGroups:
+              - capsule.clastix.io
+            apiVersions:
+              - "*"
+            operations:
+              - CREATE
+              - UPDATE
+              - DELETE
+            resources:
+              - tenants
+            scope: 'Cluster'
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.mutatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.webhooks.hooks.metadata }}
+        {{- if .enabled }}
+          {{- $anyMutating = true }}
+      - name: metadata.mutating.projectcapsule.dev
+        {{- with .opts }}
+        opts:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        admissionReviewVersions:
+          - v1
+          - v1beta1
+        path: "/generic/metadata"
+        failurePolicy:  {{ .failurePolicy }}
+        matchPolicy: {{ .matchPolicy }}
+        reinvocationPolicy: {{ .reinvocationPolicy }}
+        {{- with .namespaceSelector }}
+        namespaceSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with .objectSelector }}
+        objectSelector:
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- if or .matchConditions $.Values.webhooks.matchConditions $.Values.webhooks.mutating.matchConditions }}
+        matchConditions:
+        {{- end }}
+        {{- with .matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        {{- with $.Values.webhooks.mutating.matchConditions }}
+          {{- toYaml . |  nindent 10 }}
+        {{- end }}
+        rules:
+          {{- toYaml .rules |  nindent 10 }}
+        sideEffects: None
+        timeoutSeconds: {{ $.Values.webhooks.mutatingWebhooksTimeoutSeconds }}
+        {{- end }}
+      {{- end }}
+      {{- if not $anyMutating }}
+        []
+      {{- end }}
+{{- end }}
+{{- end }}

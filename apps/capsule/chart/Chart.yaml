@@ -1,0 +1,72 @@
+annotations:
+  artifacthub.io/category: security
+  artifacthub.io/changes: |
+    - kind: fixed
+      description: declare generic rule webhook side effects as NoneOnDryRun and suppress NetworkPolicy audit and denial Events for dry runs
+    - kind: changed
+      description: pass kubectl hook arguments through the configured image entrypoint
+    - kind: added
+      description: enforce PDB overlap, eviction allowance and unhealthy Pod policies through namespace workload rules
+    - kind: added
+      description: extend workload targets to native controller templates and kind-only allow, deny, and audit rules
+    - kind: added
+      description: added scheduler workload mutation with empty-only merge and conditional replacement for namespace profiles
+    - kind: fixed
+      description: bind managed-object rule exemptions to the Capsule controller identity and protect both managed label values on namespaces and namespaced resources
+    - kind: fixed
+      description: preserve controller startup when optional DeviceClass discovery fails
+    - kind: fixed
+      description: reject malformed Service forbidden metadata regexes on Tenant admission and fail closed for stored invalid deny patterns
+    - kind: fixed
+      description: support DeviceClass admission and status with resource.k8s.io/v1beta2 on Kubernetes 1.33 while retaining v1
+    - kind: changed
+      description: consolidate admission conditions at mutate entry and enforce level; migrate nested workload and service conditions before upgrading
+    - kind: security
+      description: validate replication tracking and protection markers on resource creation
+    - kind: fixed
+      description: preserve legacy replication admission matching and independent protection for targets shared with ResourcePermits
+    - kind: added
+      description: added CEL apply conditions to TenantResource and GlobalTenantResource policies
+    - kind: added
+      description: added per-resource SSA policy to TenantResource and GlobalTenantResource, with legacy settings fallback
+    - kind: added
+      description: added typed workload placement mutations with merge/replace actions, resource conditions, and enforcement rules
+    - kind: added
+      description: added hostUsers workload mutation and clarified mutation actions and diagnostics
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://projectcapsule.dev/
+  artifacthub.io/maintainers: |
+    - name: capsule-maintainers
+      email: cncf-capsule-maintainers@lists.cncf.io
+  artifacthub.io/operator: "true"
+  artifacthub.io/prerelease: "false"
+apiVersion: v2
+appVersion: 0.15.2
+dependencies:
+- alias: proxy
+  condition: proxy.enabled
+  name: capsule-proxy
+  repository: oci://ghcr.io/projectcapsule/charts
+  version: 0.15.3
+description: A Helm chart to deploy the Capsule Operator for easily implementing,
+  managing, and maintaining multitenancy and access control in Kubernetes.
+home: https://projectcapsule.dev/
+icon: https://github.com/projectcapsule/capsule/raw/main/assets/logo/capsule_small.png
+keywords:
+- kubernetes
+- operator
+- multi-tenancy
+- multi-tenant
+- multitenancy
+- multitenant
+- namespace
+maintainers:
+- email: cncf-capsule-maintainers@lists.cncf.io
+  name: capsule-maintainers
+name: capsule
+sources:
+- https://github.com/projectcapsule/capsule
+type: application
+version: 0.15.2

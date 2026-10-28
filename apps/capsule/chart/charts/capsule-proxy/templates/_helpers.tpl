@@ -1,0 +1,191 @@
+{{/*
+Expand the name of the chart.
+*/}}
+{{- define "capsule-proxy.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{- define "gangplank.name" -}}
+{{- include "capsule-proxy.name" $ }}-gangplank
+{{- end }}
+
+{{/*
+Create a default fully qualified app name.
+We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+If release name contains chart name it will be used as a full name.
+*/}}
+{{- define "capsule-proxy.fullname" -}}
+{{- if .Values.fullnameOverride }}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $name := default .Chart.Name .Values.nameOverride }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- define "gangplank.fullname" -}}
+{{- include "capsule-proxy.fullname" $ }}-gangplank
+{{- end }}
+
+{{/*
+Create chart name and version as used by the chart label.
+*/}}
+{{- define "capsule-proxy.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Common labels
+*/}}
+{{- define "capsule-proxy.labels" -}}
+helm.sh/chart: {{ include "capsule-proxy.chart" . }}
+{{ include "capsule-proxy.selectorLabels" . }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end }}
+
+{{- define "gangplank.labels" -}}
+helm.sh/chart: {{ include "capsule-proxy.chart" . }}
+{{ include "gangplank.selectorLabels" . }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end }}
+
+{{/*
+Selector labels
+*/}}
+{{- define "capsule-proxy.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "capsule-proxy.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+
+{{- end }}
+
+{{- define "gangplank.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "capsule-proxy.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: "gangplank"
+{{- end }}
+
+
+{{/*
+Create the name of the service account to use
+*/}}
+{{- define "capsule-proxy.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create }}
+{{- default (include "capsule-proxy.fullname" .) .Values.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{- define "gangplank.serviceAccountName" -}}
+{{- if .Values.gangplank.serviceAccount.create }}
+{{- default (include "gangplank.fullname" .) .Values.gangplank.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.gangplank.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
+Create the fully-qualified Docker image to use
+*/}}
+{{- define "capsule-proxy.fullyQualifiedDockerImage" -}}
+{{- printf "%s/%s:%s" .Values.image.registry .Values.image.repository ( .Values.image.tag | default (printf "v%s" .Chart.AppVersion) ) -}}
+{{- end }}
+
+{{/*
+Create CA secret name for the capsule proxy
+*/}}
+{{- define "capsule-proxy.caSecretName" -}}
+{{- if .Values.certManager.externalCA.enabled -}}
+{{- printf "%s" .Values.certManager.externalCA.secretName -}}
+{{- else -}}
+{{- printf "%s-root-secret" (include "capsule-proxy.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Create Cert Manager issuer name for the capsule proxy
+*/}}
+{{- define "capsule-proxy.certManager.issuerName" -}}
+{{- if eq .Values.certManager.issuer.kind "ClusterIssuer" -}}
+{{- printf "%s" .Values.certManager.issuer.name -}}
+{{- else -}}
+{{- printf "%s-ca-issuer" (include "capsule-proxy.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Render the CLI flag --host values for the self-signed certificate generator
+*/}}
+{{- define "capsule-proxy.certJob.SAN" -}}
+{{- $name := ( include "capsule-proxy.fullname" . ) -}}
+{{- $fullname := printf "%s.%s.svc" ( include "capsule-proxy.fullname" . ) ( .Release.Namespace ) -}}
+{{- $values := append .Values.options.additionalSANs $name -}}
+{{- $values = append $values $fullname -}}
+{{ join "," $values }}
+{{- end -}}
+
+{{/*
+Whether a securityContext is rendered. Called with (dict "enabled" <value> "root" $).
+An unset (null) value defaults to enabled, unless running on OpenShift.
+*/}}
+{{- define "capsule-proxy.securityContextEnabled" -}}
+{{- if kindIs "invalid" .enabled -}}
+  {{- if not .root.Values.global.openshift.enabled -}}true{{- end -}}
+{{- else if .enabled -}}true{{- end -}}
+{{- end }}
+
+{{/*
+Pod annotations required on OpenShift
+*/}}
+{{- define "capsule-proxy.openshiftAnnotations" -}}
+{{- if .Values.global.openshift.enabled -}}
+openshift.io/required-scc: {{ .Values.global.openshift.requiredScc | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
+Whether hostUsers: false is rendered. Called with (dict "hostUsers" <value> "root" $).
+Always on when running on OpenShift with the restricted-v3 SCC, which requires user namespaces.
+*/}}
+{{- define "capsule-proxy.hostUsersDisabled" -}}
+{{- if and .root.Values.global.openshift.enabled (eq (toString .root.Values.global.openshift.requiredScc) "restricted-v3") -}}true
+{{- else if and (not (kindIs "invalid" .hostUsers)) (not .hostUsers) -}}true{{- end -}}
+{{- end }}
+
+
+
+{{/*
+Capsule Webhook service (Called with $.Path)
+
+*/}}
+{{- define "capsule-proxy.webhooks.service" -}}
+  {{- include "capsule-proxy.webhooks.cabundle" $.ctx | nindent 0 }}
+  {{- if $.ctx.Values.webhooks.service.url }}
+url: {{ printf "%s/%s" (trimSuffix "/" $.ctx.Values.webhooks.service.url ) (trimPrefix "/" (required "Path is required for the function" $.path)) }}
+  {{- else }}
+service:
+  name: {{ default (printf "%s-webhook-service" (include "capsule-proxy.fullname" $.ctx)) $.ctx.Values.webhooks.service.name }}
+  namespace: {{ default $.ctx.Release.Namespace $.ctx.Values.webhooks.service.namespace }}
+  port: {{ default 443 $.ctx.Values.webhooks.service.port }}
+  path: {{ required "Path is required for the function" $.path }}
+  {{- end }}
+{{- end }}
+
+{{/*
+Capsule Webhook endpoint CA Bundle
+*/}}
+{{- define "capsule-proxy.webhooks.cabundle" -}}
+  {{- if $.Values.webhooks.service.caBundle -}}
+caBundle: {{ $.Values.webhooks.service.caBundle -}}
+  {{- end -}}
+{{- end -}}

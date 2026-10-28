@@ -1,0 +1,22 @@
+{{- if $.Values.webhooks.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "capsule-proxy.fullname" . }}-webhook-service
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: "proxy"
+    {{- include "capsule-proxy.labels" . | nindent 4 }}
+spec:
+  ports:
+  - port: 443
+    name: https
+    protocol: TCP
+    targetPort: {{ .Values.options.webhookPort }}
+  selector:
+    app.kubernetes.io/component: "proxy"
+    {{- include "capsule-proxy.selectorLabels" . | nindent 4 }}
+  sessionAffinity: None
+  type: ClusterIP
+{{- end }}

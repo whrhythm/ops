@@ -1,0 +1,13 @@
+monitoring:
+  prometheusRules:
+    enabled: true
+    ruleLabels:
+      team: platform
+  dashboards:
+    enabled: true
+    annotations:
+      k8s-sidecar-target-directory: /tmp/dashboards/Capsule
+    labels:
+      grafana_dashboard: "1"
+    operator:
+      enabled: true

@@ -1,0 +1,6 @@
+replicaCount: 2
+manager:
+  extraArgs:
+  - "--enable-leader-election=true"
+  apiPriorityAndFairness:
+    enabled: true

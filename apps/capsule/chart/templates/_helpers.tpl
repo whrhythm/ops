@@ -1,0 +1,282 @@
+{{/*
+Expand the name of the chart.
+*/}}
+{{- define "capsule.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Create a default fully qualified app name.
+We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+If release name contains chart name it will be used as a full name.
+*/}}
+{{- define "capsule.fullname" -}}
+{{- if .Values.fullnameOverride }}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $name := default .Chart.Name .Values.nameOverride }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Create chart name and version as used by the chart label.
+*/}}
+{{- define "capsule.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Base labels
+*/}}
+{{- define "capsule.baselabels" -}}
+helm.sh/chart: {{ include "capsule.chart" . }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- if .Values.customLabels }}
+{{ toYaml .Values.customLabels }}
+{{- end }}
+{{- end }}
+
+{{/*
+Common labels
+*/}}
+{{- define "capsule.labels" -}}
+{{ include "capsule.baselabels" . }}
+{{ include "capsule.selectorLabels" . }}
+{{- end }}
+
+{{/*
+Selector labels
+*/}}
+{{- define "capsule.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "capsule.name" . }}
+{{ include "capsule.selectorLabelInstance" . }}
+{{- end }}
+
+{{- define "capsule.selectorLabelInstance" -}}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+
+{{/*
+Release Annotations
+*/}}
+{{- define "capsule.releaseAnnotations" -}}
+meta.helm.sh/release-name: {{ $.Release.Name }}
+meta.helm.sh/release-namespace: {{ .Release.Namespace }}
+{{- end }}
+
+{{/*
+ServiceAccount annotations
+*/}}
+{{- define "capsule.serviceAccountAnnotations" -}}
+{{- if .Values.serviceAccount.annotations }}
+{{- toYaml .Values.serviceAccount.annotations }}
+{{- end }}
+{{- if .Values.customAnnotations }}
+{{ toYaml .Values.customAnnotations }}
+{{- end }}
+{{- end }}
+
+{{/*
+Create the name of the service account to use
+*/}}
+{{- define "capsule.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create }}
+{{- default (include "capsule.fullname" .) .Values.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
+Create the manager fully-qualified Docker image to use
+*/}}
+{{- define "capsule.managerFullyQualifiedDockerImage" -}}
+{{- printf "%s/%s:%s" .Values.manager.image.registry  .Values.manager.image.repository ( .Values.manager.image.tag | default (printf "v%s" .Chart.AppVersion) ) -}}
+{{- end }}
+
+{{/*
+Create the proxy fully-qualified Docker image to use
+*/}}
+{{- define "capsule.proxyFullyQualifiedDockerImage" -}}
+{{- printf "%s:%s" .Values.proxy.image.repository .Values.proxy.image.tag -}}
+{{- end }}
+
+{{/*
+Determine the Kubernetes version to use for jobsFullyQualifiedDockerImage tag
+*/}}
+{{- define "capsule.jobsTagKubeVersion" -}}
+{{- if contains "-eks-" .Capabilities.KubeVersion.GitVersion }}
+{{- print "v" .Capabilities.KubeVersion.Major "." (.Capabilities.KubeVersion.Minor | replace "+" "") -}}
+{{- else }}
+{{- print "v" .Capabilities.KubeVersion.Major "." .Capabilities.KubeVersion.Minor -}}
+{{- end }}
+{{- end }}
+
+{{/*
+Create the jobs fully-qualified Docker image to use
+*/}}
+{{- define "capsule.jobsFullyQualifiedDockerImage" -}}
+{{- $Values := mergeOverwrite $.Values.global.jobs.kubectl $.Values.jobs -}}
+
+{{- if $Values.image.tag }}
+{{- printf "%s/%s:%s" $Values.image.registry $Values.image.repository $Values.image.tag -}}
+{{- else }}
+{{- printf "%s/%s:%s" $Values.image.registry $Values.image.repository (include "capsule.jobsTagKubeVersion" .) -}}
+{{- end }}
+{{- end }}
+
+{{/*
+Create the Capsule controller name to use
+*/}}
+{{- define "capsule.controllerName" -}}
+{{- printf "%s-controller-manager" (include "capsule.fullname" .) -}}
+{{- end }}
+
+{{/*
+Create the Capsule TLS Secret name to use
+*/}}
+{{- define "capsule.secretTlsName" -}}
+{{ default ( printf "%s-tls" ( include "capsule.fullname" . ) ) .Values.tls.name }}
+{{- end }}
+
+{{/*
+Whether a securityContext is rendered. Called with (dict "enabled" <value> "root" $).
+An unset (null) value defaults to enabled, unless running on OpenShift.
+*/}}
+{{- define "capsule.securityContextEnabled" -}}
+{{- if kindIs "invalid" .enabled -}}
+  {{- if not .root.Values.global.openshift.enabled -}}true{{- end -}}
+{{- else if .enabled -}}true{{- end -}}
+{{- end }}
+
+{{/*
+Whether a job securityContext is rendered. Called with (dict "key" "securityContext" "values" $Values "root" $).
+On OpenShift it is off, unless set explicitly in the top-level `jobs` values (global values cannot be
+null-defaulted as the capsule-proxy subchart schema/defaults require a boolean).
+*/}}
+{{- define "capsule.jobSecurityContextEnabled" -}}
+{{- $override := dig .key "enabled" nil .root.Values.jobs -}}
+{{- if and .root.Values.global.openshift.enabled (kindIs "invalid" $override) -}}
+{{- else if (get .values .key).enabled -}}true{{- end -}}
+{{- end }}
+
+{{/*
+Pod annotations required on OpenShift
+*/}}
+{{- define "capsule.openshiftAnnotations" -}}
+{{- if .Values.global.openshift.enabled -}}
+openshift.io/required-scc: {{ .Values.global.openshift.requiredScc | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
+Whether hostUsers: false is rendered. Called with (dict "hostUsers" <value> "root" $).
+Always on when running on OpenShift with the restricted-v3 SCC, which requires user namespaces.
+*/}}
+{{- define "capsule.hostUsersDisabled" -}}
+{{- if and .root.Values.global.openshift.enabled (eq (toString .root.Values.global.openshift.requiredScc) "restricted-v3") -}}true
+{{- else if and (not (kindIs "invalid" .hostUsers)) (not .hostUsers) -}}true{{- end -}}
+{{- end }}
+
+{{/*
+Admission matchCondition excluding the OpenShift kube-storage-version-migrator (etcd encryption)
+*/}}
+{{- define "capsule.openshiftEtcdEncryptionMatchConditions" -}}
+{{- if .Values.openshift.etcdEncryption.enabled -}}
+- name: "exclude-openshift-encryption-key-migrator"
+  expression: >
+    !(
+      request.userInfo.username in [
+        "system:serviceaccount:openshift-kube-storage-version-migrator:kube-storage-version-migrator-sa"
+      ]
+    )
+{{- end }}
+{{- end }}
+
+
+{{/*
+Capsule Webhook service (Called with $.Path)
+
+*/}}
+{{- define "capsule.webhooks.service" -}}
+  {{- include "capsule.webhooks.cabundle" $.ctx | nindent 0 }}
+  {{- if $.ctx.Values.webhooks.service.url }}
+url: {{ printf "%s/%s" (trimSuffix "/" $.ctx.Values.webhooks.service.url ) (trimPrefix "/" (required "Path is required for the function" $.path)) }}
+  {{- else }}
+service:
+  name: {{ default (printf "%s-webhook-service" (include "capsule.fullname" $.ctx)) $.ctx.Values.webhooks.service.name }}
+  namespace: {{ default $.ctx.Release.Namespace $.ctx.Values.webhooks.service.namespace }}
+  port: {{ default $.ctx.Values.manager.webhookPort $.ctx.Values.webhooks.service.port }}
+  path: {{ required "Path is required for the function" $.path }}
+  {{- end }}
+{{- end }}
+
+
+{{/*
+Capsule Webhook service (Without Path)
+*/}}
+{{- define "capsule.webhooks.serviceConfig" -}}
+  {{- include "capsule.webhooks.cabundle" $ | nindent 0 }}
+  {{- if $.Values.webhooks.service.url }}
+url: {{ trimSuffix "/" $.Values.webhooks.service.url }}
+  {{- else }}
+service:
+  name: {{ default (printf "%s-webhook-service" (include "capsule.fullname" $)) $.Values.webhooks.service.name }}
+  namespace: {{ default $.Release.Namespace $.Values.webhooks.service.namespace }}
+  port: {{ default $.Values.manager.webhookPort $.Values.webhooks.service.port }}
+  {{- end }}
+{{- end }}
+
+{{/*
+Capsule Webhook endpoint CA Bundle
+*/}}
+{{- define "capsule.webhooks.cabundle" -}}
+  {{- if $.Values.webhooks.service.caBundle -}}
+caBundle: {{ $.Values.webhooks.service.caBundle -}}
+  {{- end -}}
+{{- end -}}
+
+
+{{- define "capsule.crdsSizeHash" -}}
+{{- $paths := list -}}
+{{- range $p, $_ := .Files.Glob "crds/**.yaml" }}
+  {{- $paths = append $paths $p -}}
+{{- end -}}
+{{- $paths = sortAlpha $paths -}}
+
+{{- $sizes := list -}}
+{{- range $paths }}
+  {{- $sizes = append $sizes (len ($.Files.Get .)) -}}
+{{- end -}}
+
+{{- $joined := join "," $sizes -}}
+{{- sha256sum $joined -}}
+{{- end -}}
+
+{{- define "admission.labels" -}}
+  {{- with $.Values.webhooks.labels }}
+    {{- toYaml . | nindent 0 }}
+  {{- end }}
+{{- end }}
+
+
+{{- define "admission.annotations" -}}
+  {{- if and ($.Values.certManager.generateCertificates) (not $.Values.webhooks.service.caBundle) }}
+cert-manager.io/inject-ca-from: {{ $.Release.Namespace }}/{{ include "capsule.fullname" $ }}-webhook-cert
+  {{-  end }}
+  {{- with $.Values.customAnnotations }}
+    {{- toYaml . | nindent 0 }}
+  {{- end }}
+  {{- with $.Values.webhooks.annotations }}
+    {{- toYaml . | nindent 0 }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,23 @@
+{{- if not $.Values.crds.exclusive }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "capsule.fullname" . }}-webhook-service
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "capsule.labels" . | nindent 4 }}
+  {{- with .Values.customAnnotations }}
+  annotations:
+   {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ports:
+  - port: {{ default $.Values.manager.webhookPort $.Values.webhooks.service.port }}
+    name: admission
+    protocol: TCP
+    targetPort: {{ default $.Values.manager.webhookPort $.Values.webhooks.service.port }}
+  selector:
+    {{- include "capsule.selectorLabels" . | nindent 4 }}
+  sessionAffinity: None
+  type: ClusterIP
+{{- end }}

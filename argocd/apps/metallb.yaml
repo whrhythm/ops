@@ -23,6 +23,10 @@ spec:
         speaker:
           nodeSelector:
             kubernetes.io/os: linux
+          memberlist:
+            # 7946 (memberlist default) is already bound on this host by
+            # the kubepilot node-agent (hostNetwork, memberlist default).
+            mlBindPort: 7956
   destination:
     server: https://kubernetes.default.svc
     namespace: metallb

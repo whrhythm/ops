@@ -10,11 +10,16 @@ metadata:
 spec:
   project: default
   source:
-    # OCI registry: the git repo's Chart.yaml carries version 0.0.0
-    # (overwritten at release time), so the git path is unusable for ArgoCD.
-    repoURL: oci://ghcr.io/projectcapsule/charts
-    chart: capsule
-    targetRevision: 0.15.2
+    # Vendored chart (like kubepilot): ArgoCD 2.12's repo-server bundles
+    # helm 3.15.2, whose `helm pull --repo oci://` is broken (routes OCI
+    # repos through the HTTP index path -> "object required"), so the
+    # OCI source is unusable. apps/capsule/chart/ is the published
+    # oci://ghcr.io/projectcapsule/charts/capsule:0.15.2 package
+    # (includes the capsule-proxy subchart). To upgrade, re-extract the
+    # new published chart here.
+    repoURL: https://github.com/whrhythm/ops.git
+    targetRevision: main
+    path: apps/capsule/chart
   destination:
     server: https://kubernetes.default.svc
     namespace: capsule-system
