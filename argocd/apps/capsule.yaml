@@ -27,3 +27,8 @@ spec:
     automated:
       selfHeal: true
       prune: true
+    # The crd-lifecycle hook ConfigMaps embed the full CRDs (tenants is
+    # ~450KB); client-side apply would blow the 256KB
+    # last-applied-configuration annotation limit.
+    syncOptions:
+      - ServerSideApply=true
