@@ -46,10 +46,6 @@ metadata:
     # create hook dependencies in the right order
     "helm.sh/hook-weight": "-5"
     {{- include "capsule.crds.annotations" . | nindent 4 }}
-    # local patch: force server-side apply for these hook ConfigMaps; the CRD-heavy
-    # ones (tenants ~450KB, rulestatuses ~756KB) exceed the 256KiB limit of the
-    # last-applied-configuration annotation written by client-side apply
-    "argocd.argoproj.io/sync-options": "ServerSideApply=true"
   labels:
     app.kubernetes.io/component: {{ include "capsule.crds.component" . | quote }}
     app.kubernetes.io/name: {{ include "capsule.crds.component" . | quote }}
