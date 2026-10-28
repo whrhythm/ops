@@ -1,0 +1,10 @@
+# Capsule v0.15: the tenant object is `Tenant` (cluster-scoped), replacing
+# the old `Capsule` kind.
+apiVersion: capsule.clastix.io/v1beta2
+kind: Tenant
+metadata:
+  name: default
+spec:
+  owners:
+    - kind: User
+      name: default

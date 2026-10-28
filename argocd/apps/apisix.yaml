@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: apisix
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    app.kubernetes.io/name: apisix
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/apache/apisix-helm-chart
+    path: charts/apisix
+    targetRevision: apisix-ingress-controller-1.4.1
+    helm:
+      values: |
+        etcd:
+          # Built-in etcd is for dev/test only; single node runs one replica.
+          replicaCount: 1
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: apisix
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    createNamespace: true

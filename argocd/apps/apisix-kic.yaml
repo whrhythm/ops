@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: apisix-kic
+  namespace: argocd
+  annotations:
+    # After the apisix dataplane: KIC connects to its Admin API.
+    argocd.argoproj.io/sync-wave: "0"
+  labels:
+    app.kubernetes.io/name: apisix
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/apache/apisix-helm-chart
+    path: charts/apisix-ingress-controller
+    targetRevision: apisix-ingress-controller-1.4.1
+    helm:
+      values: |
+        # Point the default GatewayProxy at the dataplane Admin API
+        # (created by the apisix chart in the same namespace).
+        gatewayProxy:
+          createDefault: true
+        apisix:
+          adminService:
+            namespace: apisix
+            name: apisix-admin
+            port: 9180
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: apisix
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true

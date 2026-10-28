@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: metallb
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+  labels:
+    app.kubernetes.io/name: metallb
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/metallb/metallb
+    path: charts/metallb
+    targetRevision: v0.16.1
+    helm:
+      values: |
+        # Standard for shared/control-plane nodes (mirrors the upstream
+        # config/native manifests).
+        controller:
+          nodeSelector:
+            kubernetes.io/os: linux
+        speaker:
+          nodeSelector:
+            kubernetes.io/os: linux
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: metallb
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    createNamespace: true

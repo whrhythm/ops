@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: signoz
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    app.kubernetes.io/name: signoz
+spec:
+  project: default
+  source:
+    repoURL: https://charts.signoz.io
+    chart: signoz
+    targetRevision: 0.147.0
+    helm:
+      values: |
+        signoz:
+          service:
+            # Consumes a MetalLB IP from the `default` pool.
+            type: LoadBalancer
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: signoz
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    createNamespace: true

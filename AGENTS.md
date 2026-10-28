@@ -12,9 +12,24 @@ This repo is an ArgoCD GitOps repository (repo: https://github.com/whrhythm/ops.
 
 Waves are set via the `argocd.argoproj.io/sync-wave` annotation on each `Application`:
 
-- `0` — the AI foundation: `kubepilot`
-- `>= 1` — business apps (deployed after kubepilot)
-- Negative waves are reserved for shared dependencies, if any app ever needs them.
+- `-4` — `longhorn` (block storage, first so PVCs can use it later)
+- `-3` — `metallb`, `cert-manager`, `capsule` (independent infra charts)
+- `-2` — `metallb-config` (IPAddressPool + L2Advertisement), `cert-manager-issuer` (self-signed ClusterIssuer), `capsule-tenant` (default Tenant) — each waits on the CRDs of the chart above
+- `-1` — `signoz` (UI Service takes a MetalLB IP), `apisix` (dataplane + built-in etcd)
+- `0` — `apisix-kic` (needs the APISIX Admin API), `kubepilot`
+- `>= 1` — business apps: `aisix` (wave 1)
+
+## Infrastructure components
+
+Single-node k3s cluster (`edge`); all values for one node are set inline in each Application (`helm.values`) — chart-repo values files can only live in the chart's own repo, so only vendored charts (kubepilot) use `valueFiles`.
+
+- **longhorn** — `https://charts.longhorn.io` chart `longhorn` `1.13.0`, ns `longhorn-system`. Single-node values: default StorageClass `longhorn` `replicaCount: 1` (`persistence.defaultClassReplicaCount`), CSI controllers/global-manager/UI all 1 replica, `preUpgradeChecker` disabled (it blocks GitOps syncs). No data redundancy on one node.
+- **metallb** — git source `github.com/metallb/metallb` tag `v0.16.1` path `charts/metallb`, ns `metallb`. Native API only: since v0.13 there is no ConfigMap/`configInline`; `apps/metallb/pool.yaml` creates the `IPAddressPool` (192.168.10.50-65) **and an explicit `L2Advertisement`** — without it, pools are not L2-announced.
+- **cert-manager** — `https://charts.jetstack.io` chart `cert-manager` `v1.21.3`, ns `cert-manager`. Set `crds.enabled: true` + `crds.keep: true` (the chart ships CRDs in templates, default off). `apps/cert-manager/issuer.yaml` adds a self-signed `ClusterIssuer` named `selfsigned` (via the `-2` app `cert-manager-issuer`).
+- **capsule** — `oci://ghcr.io/projectcapsule/charts` chart `capsule` `0.15.2`, ns `capsule-system`. OCI registry, **not** the git repo: the repo's `Chart.yaml` carries `version: 0.0.0` (overwritten at release), which ArgoCD/Helm reject. v0.15 tenants are `Tenant` objects (`capsule.clastix.io/v1beta2`, cluster-scoped), replacing the old `Capsule` kind — `apps/capsule/tenant.yaml` creates the `default` tenant owned by User `default`.
+- **signoz** — `https://charts.signoz.io` chart `signoz` `0.147.0`, ns `signoz`. `signoz.service.type: LoadBalancer` (one MetalLB IP, UI on port 8080). Bundled subcharts (clickhouse+zk, postgres, otel-gateway) run single-replica by default.
+- **apisix** — git source `github.com/apache/apisix-helm-chart` tag `apisix-ingress-controller-1.4.1`, path `charts/apisix`, ns `apisix`. Image `apache/apisix:3.19.0-ubuntu`, built-in dev etcd (`etcd.replicaCount: 1`), Admin API on svc `apisix-admin:9180` (default admin key, dev only). Service stays NodePort (no LB IP needed).
+- **apisix-kic** — same repo/tag, path `charts/apisix-ingress-controller` (KIC image 2.2.0, chart v1.4.1), ns `apisix`. `gatewayProxy.createDefault: true` + `apisix.adminService` point the default `GatewayProxy` at `apisix-admin:9180` (admin key default matches the dataplane). Webhook uses a chart-generated self-signed cert (no cert-manager dependency).
 
 ## KubePilot
 
@@ -28,6 +43,13 @@ Waves are set via the `argocd.argoproj.io/sync-wave` annotation on each `Applica
   - Dashboard auth: enabled by default. Placeholder `kubepilot.auth.password` in values — replace at deploy time (or set `kubepilot.auth.existingSecret`).
 - Image: `ghcr.io/kubepilot/kubepilot:latest`, built from the upstream Dockerfile (for CN networks add tuna alpine mirror + `GOPROXY=https://goproxy.cn,direct`), pushed to the ghcr package. The container runs as non-root (uid 65532) with a read-only rootfs — custom Dockerfiles must keep that working.
 - Access: dashboard on Service port 8080 (`kubectl port-forward -n kubepilot svc/kubepilot 8080:8080`), MCP on 9090. The app also runs a per-node DaemonSet (`nodeAgent`, default on) exposing hardware info; disable with `nodeAgent.enabled: false`.
+
+## AISIX (api7 AI gateway)
+
+- `apps/aisix/` — hand-written manifests (no Helm chart exists in the OSS repo). Image `ghcr.io/api7/aisix:1.6.0` (runs as uid 10001, non-root).
+- Standalone mode: `config.yaml` sets `resources_file: /etc/aisix/resources.yaml` (no etcd). Resources file format: `_format_version: "1"` + resource collections (`provider_keys`, `models`, `api_keys`, ...); values support `${ENV}` interpolation. Currently **no upstreams configured** — add `provider_keys`/`models` (keys via env, never inline in the public repo) and restart/SIGHUP.
+- Listeners: proxy `:3000`, admin `:3001` (`/livez` + `/readyz` live here — probes point at it; admin key via `${AISIX_ADMIN_KEY}`), prometheus `:9090`.
+- Secret: out-of-band `aisix-admin` in ns `aisix`, key `admin-key` (`kubectl create secret generic aisix-admin -n aisix --from-literal=admin-key=<key>`); injected as env `AISIX_ADMIN_KEY`.
 
 ## Adding a new app
 

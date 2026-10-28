@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: longhorn
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+  labels:
+    app.kubernetes.io/name: longhorn
+spec:
+  project: default
+  source:
+    repoURL: https://charts.longhorn.io
+    chart: longhorn
+    targetRevision: 1.13.0
+    helm:
+      values: |
+        # Single-node cluster: one replica for the default StorageClass and
+        # for the CSI controller deployments (they cannot all run on one node).
+        persistence:
+          defaultClassReplicaCount: 1
+        csi:
+          attacherReplicaCount: 1
+          provisionerReplicaCount: 1
+          resizerReplicaCount: 1
+          snapshotterReplicaCount: 1
+        longhornGlobalManager:
+          replicas: 1
+        longhornUI:
+          replicas: 1
+        # Disable the pre-upgrade Job: it blocks syncs in GitOps setups.
+        preUpgradeChecker:
+          jobEnabled: false
+          upgradeVersionCheck: false
+        defaultSettings:
+          defaultReplicaCount: '{"v1":"1","v2":"1"}'
+          storageMinimalAvailablePercentage: 5
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: longhorn-system
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    createNamespace: true

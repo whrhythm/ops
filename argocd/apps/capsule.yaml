@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: capsule
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+  labels:
+    app.kubernetes.io/name: capsule
+spec:
+  project: default
+  source:
+    # OCI registry: the git repo's Chart.yaml carries version 0.0.0
+    # (overwritten at release time), so the git path is unusable for ArgoCD.
+    repoURL: oci://ghcr.io/projectcapsule/charts
+    chart: capsule
+    targetRevision: 0.15.2
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: capsule-system
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    createNamespace: true

@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aisix
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    app.kubernetes.io/name: aisix
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/whrhythm/ops.git
+    targetRevision: main
+    path: apps/aisix
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: aisix
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    createNamespace: true

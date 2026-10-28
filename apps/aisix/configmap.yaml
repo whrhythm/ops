@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aisix-config
+  namespace: aisix
+data:
+  config.yaml: |
+    # Standalone mode: resources come from the file below (no etcd).
+    resources_file: "/etc/aisix/resources.yaml"
+    proxy:
+      addr: "0.0.0.0:3000"
+    admin:
+      addr: "0.0.0.0:3001"
+      admin_keys:
+        # Interpolated from the AISIX_ADMIN_KEY env (Secret: aisix-admin).
+        - "${AISIX_ADMIN_KEY}"
+    observability:
+      service_name: "aisix"
+      log_level: "info"
+      metrics:
+        prometheus:
+          enabled: true
+          path: "/metrics"
+          addr: "0.0.0.0:9090"
+  resources.yaml: |
+    # No upstreams yet — add provider_keys/models/api_keys here (values are
+    # ${ENV}-interpolated) and SIGHUP/restart to reload.
+    _format_version: "1"

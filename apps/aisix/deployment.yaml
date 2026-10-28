@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aisix
+  namespace: aisix
+  labels:
+    app.kubernetes.io/name: aisix
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aisix
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aisix
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: aisix
+          image: ghcr.io/api7/aisix:1.6.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: AISIX_ADMIN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aisix-admin
+                  key: admin-key
+          ports:
+            - name: proxy
+              containerPort: 3000
+              protocol: TCP
+            - name: admin
+              containerPort: 3001
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: admin
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: admin
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/aisix
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: aisix-config
