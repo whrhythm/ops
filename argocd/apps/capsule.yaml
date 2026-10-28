@@ -67,6 +67,11 @@ spec:
     automated:
       selfHeal: true
       prune: true
-    # Large CRDs (>256KiB) must not be applied client-side.
-    syncOptions:
-      - ServerSideApply=true
+    # NOTE: do NOT add syncOptions: [ServerSideApply=true] here. ArgoCD then
+    # enables structured-merge-diff for EVERY resource of the app, and its
+    # SMD library (built against k8s 1.31 types) chokes on the k8s 1.36
+    # Deployment status field `terminatingReplicas` -> ComparisonError
+    # ("field not declared in schema") for all resources. The large CRDs
+    # are covered by the per-resource argocd.argoproj.io/sync-options
+    # annotation in the chart values above (SSA apply + SMD diff for CRDs
+    # only, which are resolved against the cluster's OpenAPI schema).
