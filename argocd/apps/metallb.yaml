@@ -30,4 +30,3 @@ spec:
     automated:
       selfHeal: true
       prune: true
-    createNamespace: true
