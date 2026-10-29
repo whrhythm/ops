@@ -1,7 +1,11 @@
 # Harbor (internal container registry + UI).
-# Wave 0: after longhorn (-4), cert-manager/-filesystem issuer (-3, -2) and
-# MetalLB config (-2), and after the shared CNPG PostgreSQL (-1) it uses as its
-# database. Business apps that pull from Harbor must be at wave >= 1.
+# Wave 0: after longhorn (-4), cert-manager/-issuer (-3, -2) and MetalLB config
+# (-2), and after the shared CNPG PostgreSQL (-1) it uses as its database.
+# Business apps that pull from Harbor must be at wave >= 1.
+#
+# Values are inline because for chart-repo sources ArgoCD resolves valueFiles
+# inside the chart itself (values files can only come from the chart's repo);
+# same pattern as the signoz/capsule Applications.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -18,9 +22,173 @@ spec:
     chart: harbor
     targetRevision: 1.19.4
     helm:
-      valueFiles:
-        # Leading slash = relative to the repo root (ArgoCD convention).
-        - /apps/harbor/values.yaml
+      values: |
+        # Harbor (chart 1.19.4 = Harbor 2.15.4).
+        #
+        # ArgoCD gotchas this file works around (details in AGENTS.md):
+        # - The chart resolves generated secrets with helm `lookup`, which ArgoCD cannot
+        #   do offline. Left alone it would re-render new random values on every sync
+        #   (core secret, CSRF key, jobservice/registry shared secrets, token CA),
+        #   causing secret drift. Every random value is therefore pinned to the
+        #   out-of-band Secret `harbor-secrets` (keys: secretKey, secret, CSRF_KEY,
+        #   JOBSERVICE_SECRET, REGISTRY_HTTP_SECRET, REGISTRY_PASSWD,
+        #   REGISTRY_HTPASSWD, password, HARBOR_ADMIN_PASSWORD).
+        # - TLS comes from cert-manager (app `harbor-pki`), not the chart's `auto`
+        #   generated CA, so the node-side containerd CA file is stable.
+        #
+        # Images: Harbor's own images are on Docker Hub. The 1ms.run mirror
+        # (docker.1ms.run/goharbor/...) was failing on blob downloads during rollout,
+        # so upstream docker.io is used; swapping the repository is a one-line change
+        # once the mirror is healthy again.
+
+        expose:
+          type: loadBalancer
+          tls:
+            enabled: true
+            certSource: secret
+            secret:
+              secretName: harbor-tls
+          loadBalancer:
+            name: harbor
+            ports:
+              httpPort: 80
+              httpsPort: 443
+            annotations:
+              # Takes 192.168.10.51 from the MetalLB `default` pool (…50-65).
+              metallb.io/loadBalancerIPs: "192.168.10.51"
+
+        externalURL: https://harbor.k3s.local
+
+        # Core trusts ca.crt from this same secret (the internal CA).
+        caSecretName: harbor-tls
+
+        existingSecretAdminPassword: harbor-secrets
+        existingSecretAdminPasswordKey: HARBOR_ADMIN_PASSWORD
+        existingSecretSecretKey: harbor-secrets
+
+        core:
+          existingSecret: harbor-secrets
+          existingXsrfSecret: harbor-secrets
+          existingXsrfSecretKey: CSRF_KEY
+          # RSA key pair for the token service; pinned so no genCA() per render.
+          secretName: harbor-core-token
+          image:
+            repository: docker.io/goharbor/harbor-core
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+
+        jobservice:
+          existingSecret: harbor-secrets
+          existingSecretKey: JOBSERVICE_SECRET
+          image:
+            repository: docker.io/goharbor/harbor-jobservice
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+        portal:
+          image:
+            repository: docker.io/goharbor/harbor-portal
+
+        nginx:
+          image:
+            repository: docker.io/goharbor/nginx-photon
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+        registry:
+          existingSecret: harbor-secrets
+          existingSecretKey: REGISTRY_HTTP_SECRET
+          credentials:
+            # Secret with REGISTRY_PASSWD (plain) and REGISTRY_HTPASSWD (bcrypt line).
+            existingSecret: harbor-secrets
+          registry:
+            image:
+              repository: docker.io/goharbor/registry-photon
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
+          controller:
+            image:
+              repository: docker.io/goharbor/harbor-registryctl
+
+        # Shared CloudNativePG cluster (app `postgres`, wave -1): database `registry`,
+        # role `harbor`, password in `harbor-secrets`. sslmode=require encrypts without
+        # CA verification (pg_hba allows host scram over TCP).
+        database:
+          type: external
+          external:
+            host: postgres-rw.postgres.svc.cluster.local
+            port: "5432"
+            username: harbor
+            coreDatabase: registry
+            existingSecret: harbor-secrets
+            sslmode: require
+
+        # Internal valkey cache (no password, so no random secret either).
+        redis:
+          type: internal
+          internal:
+            image:
+              repository: docker.io/goharbor/valkey-photon
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                cpu: 250m
+                memory: 512Mi
+
+        trivy:
+          enabled: true
+          image:
+            repository: docker.io/goharbor/trivy-adapter-photon
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1
+              memory: 1Gi
+
+        # Longhorn-backed data. `keep` so ArgoCD prune never deletes registry data.
+        persistence:
+          enabled: true
+          resourcePolicy: keep
+          persistentVolumeClaim:
+            registry:
+              storageClass: longhorn
+              size: 20Gi
+            jobservice:
+              jobLog:
+                storageClass: longhorn
+                size: 1Gi
+            redis:
+              storageClass: longhorn
+              size: 1Gi
+
+        # Keep internal traffic plain HTTP (external TLS terminates at nginx).
+        internalTLS:
+          enabled: false
+
   destination:
     server: https://kubernetes.default.svc
     namespace: harbor
