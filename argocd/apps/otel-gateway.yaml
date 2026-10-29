@@ -36,12 +36,21 @@ spec:
               check_interval: 5s
               limit_percentage: 80
               spike_limit_percentage: 25
-            batch: {}
+            filter/noise:
+              error_mode: ignore
+              logs:
+                log_record:
+                  - 'IsMatch(body, "(?i)\"(GET|HEAD|POST) /(livez|readyz|healthz)([?\" ]|$)")'
+            batch:
+              send_batch_size: 1024
+              timeout: 10s
           exporters:
             otlp:
               endpoint: signoz-otel-collector.signoz.svc.cluster.local:4317
               tls:
                 insecure: true
+            debug:
+              verbosity: basic
           extensions:
             health_check:
               endpoint: ${env:MY_POD_IP}:13133
@@ -70,9 +79,11 @@ spec:
                   - otlp
                 processors:
                   - memory_limiter
+                  - filter/noise
                   - batch
                 exporters:
                   - otlp
+                  - debug
         ports:
           otlp:
             enabled: true
