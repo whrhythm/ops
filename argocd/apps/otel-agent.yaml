@@ -111,8 +111,6 @@ spec:
               endpoint: otel-gateway.otel.svc.cluster.local:4317
               tls:
                 insecure: true
-            debug:
-              verbosity: basic
           extensions:
             health_check:
               endpoint: ${env:MY_POD_IP}:13133
@@ -139,7 +137,6 @@ spec:
                   - batch
                 exporters:
                   - otlp/gateway
-                  - debug
         service:
           enabled: false
         ports:

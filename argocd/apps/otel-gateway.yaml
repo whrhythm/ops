@@ -49,8 +49,6 @@ spec:
               endpoint: signoz-otel-collector.signoz.svc.cluster.local:4317
               tls:
                 insecure: true
-            debug:
-              verbosity: basic
           extensions:
             health_check:
               endpoint: ${env:MY_POD_IP}:13133
@@ -83,7 +81,6 @@ spec:
                   - batch
                 exporters:
                   - otlp
-                  - debug
         ports:
           otlp:
             enabled: true
