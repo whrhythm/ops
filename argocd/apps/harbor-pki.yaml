@@ -1,0 +1,25 @@
+# Harbor TLS material, issued by the internal CA (apps/cert-manager). Separate
+# app so the secrets exist before the Helm release at wave 0 starts nginx/core.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: harbor-pki
+  namespace: argocd
+  annotations:
+    # After cert-manager CRDs (-3) and the internal CA (-2).
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    app.kubernetes.io/name: harbor
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/whrhythm/ops.git
+    targetRevision: main
+    path: apps/harbor-pki
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: harbor
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true

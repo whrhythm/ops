@@ -1,0 +1,30 @@
+# Harbor (internal container registry + UI).
+# Wave 0: after longhorn (-4), cert-manager/-filesystem issuer (-3, -2) and
+# MetalLB config (-2), and after the shared CNPG PostgreSQL (-1) it uses as its
+# database. Business apps that pull from Harbor must be at wave >= 1.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: harbor
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  labels:
+    app.kubernetes.io/name: harbor
+spec:
+  project: default
+  source:
+    repoURL: https://helm.goharbor.io
+    chart: harbor
+    targetRevision: 1.19.4
+    helm:
+      valueFiles:
+        # Leading slash = relative to the repo root (ArgoCD convention).
+        - /apps/harbor/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: harbor
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
