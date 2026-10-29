@@ -8,14 +8,18 @@ This repo is an ArgoCD GitOps repository (repo: https://github.com/whrhythm/ops.
 - `argocd/apps/` — one ArgoCD `Application` object per app. This directory is managed by the app-of-apps parent app.
 - `argocd/bootstrap/apps.yaml` — the parent Application that syncs `argocd/apps/`. It must be applied manually once (`kubectl apply -f argocd/bootstrap/apps.yaml`); after that it manages every app in `argocd/apps/`.
 
+## Image pulls (1ms.run mirrors)
+
+This cluster is in mainland China: upstream pulls work but are slow (docker.io layers take minutes). The free 1ms.run channels are used instead — `docker.1ms.run` for Docker Hub and `ghcr.1ms.run` for GHCR (same manifests, ~15s). Only the registry host of an image ref changes; the upstream ref is kept in a comment next to it so it can be reverted if the mirror is unreachable. 1ms.run's other mirrors (quay/gcr/k8s/mcr/nvcr/elastic) need a paid account, so those images still pull directly from upstream.
+
 ## Deploy ordering (sync waves)
 
 Waves are set via the `argocd.argoproj.io/sync-wave` annotation on each `Application`:
 
 - `-4` — `longhorn` (block storage, first so PVCs can use it later)
-- `-3` — `metallb`, `cert-manager`, `capsule` (independent infra charts)
-- `-2` — `metallb-config` (IPAddressPool + L2Advertisement), `cert-manager-issuer` (self-signed ClusterIssuer), `capsule-tenant` (default Tenant) — each waits on the CRDs of the chart above
-- `-1` — `signoz` (UI Service takes a MetalLB IP), `apisix` (dataplane + built-in etcd), `otel-gateway` + `otel-agent` (standalone OpenTelemetry Collectors)
+- `-3` — `metallb`, `cert-manager`, `capsule` (independent infra charts), `cnpg-crds` (vendored CloudNativePG CRDs)
+- `-2` — `metallb-config` (IPAddressPool + L2Advertisement), `cert-manager-issuer` (self-signed ClusterIssuer), `capsule-tenant` (default Tenant), `cnpg` (operator) — each waits on the CRDs of the chart above
+- `-1` — `signoz` (UI Service takes a MetalLB IP), `apisix` (dataplane + built-in etcd), `otel-gateway` + `otel-agent` (standalone OpenTelemetry Collectors), `postgres` (CNPG Cluster + topology detector), `minio` (shared S3)
 - `0` — `apisix-kic` (needs the APISIX Admin API), `kubepilot`
 - `>= 1` — business apps: `aisix` (wave 1)
 
@@ -50,6 +54,23 @@ Single-node k3s cluster (`edge`); all values for one node are set inline in each
   - **End-to-end depends on the SigNoz onboarding note above**: until SigNoz has an org/account, the bundled collector won't listen on 4317, so these collectors buffer/retry (their own OTLP receivers on 4317/4318 are up and accept data regardless).
 - **apisix** — git source `github.com/apache/apisix-helm-chart` tag `apisix-ingress-controller-1.4.1`, path `charts/apisix`, ns `apisix`. Image `apache/apisix:3.19.0-ubuntu`, built-in dev etcd (`etcd.replicaCount: 1`), Admin API on svc `apisix-admin:9180` (default admin key, dev only). Service stays NodePort (no LB IP needed).
 - **apisix-kic** — same repo/tag, path `charts/apisix-ingress-controller` (KIC image 2.2.0, chart v1.4.1), ns `apisix`. `gatewayProxy.createDefault: true` + `apisix.adminService` point the default `GatewayProxy` at `apisix-admin:9180` (admin key default matches the dataplane). Webhook uses a chart-generated self-signed cert (no cert-manager dependency).
+
+## PostgreSQL (CloudNativePG)
+
+- `apps/cnpg-crds/` — the 11 CloudNativePG CRDs from chart `cloudnative-pg` `0.29.1` (`templates/crds/crds.yaml`), split one file per CRD, wave `-3`. `clusters` (~460KB) and `poolers` (~660KB) dwarf the 256KiB `last-applied-configuration` limit, so every CRD carries `argocd.argoproj.io/sync-options: ServerSideApply=true,Delete=false` (SSA is required to apply them at all; `Delete=false` makes removing the app drop nothing and never cascade-delete CRs). Because of that, the operator app sets `helm.values.crds.create: false` — otherwise ArgoCD would client-side apply the single 1.26MB CRD template.
+- `cnpg` (wave -2) — chart `cloudnative-pg` `0.29.1` (operator 1.30.1) in ns `cnpg-system`, image `ghcr.1ms.run/cloudnative-pg/cloudnative-pg:1.30.1` (mirror; upstream `ghcr.io/...`), requests 50m/128Mi limits 500m/512Mi. To upgrade, re-extract the chart's `templates/crds/crds.yaml` into `apps/cnpg-crds/` the same way and bump both the chart version and the CRD set.
+- `postgres` (wave -1) — ns `postgres`, one CNPG `Cluster` named `postgres`: PostgreSQL 17.7 (`ghcr.1ms.run/cloudnative-pg/postgresql:17.7`), 20Gi `longhorn` (default SC is ambiguous here, always pin), superuser access enabled (Secret `postgres-superuser`, user `postgres`), `max_connections=200`/`shared_buffers=256MB`, preferred (not required) `podAntiAffinity` on `kubernetes.io/hostname` so standbys spread on multi-node but still schedule on this single node.
+  - Services created by the operator: `postgres-rw` (always the primary — apps write here), `postgres-ro` (standbys only, empty by design on one node), `postgres-r` (any instance).
+  - **Topology detector**: CronJob `postgres-topology-detector` every 5 min (`concurrencyPolicy: Forbid`) counts Ready nodes and sets `spec.instances` to 1 (single node) or `MULTI_NODE_INSTANCES` (2) with a merge patch; the operator then starts streaming replication + failover by itself. RBAC is minimal: SA `postgres-topology` with a Role on `clusters` (get/patch) and a ClusterRole on `nodes` (get/list). Run it on demand with `kubectl -n postgres create job --from=cronjob/postgres-topology-detector smoke`.
+  - The `postgres` Application **must** keep the spec-level `ignoreDifferences` for group `postgresql.cnpg.io`, kind `Cluster`, jsonPointer `/spec/instances` — otherwise selfHeal reverts the detector's patch (verified: patching to 2 leaves the app Synced).
+  - Bootstrapping/detector/credentials are all out-of-band: nothing else needs manual steps. To reach it from outside, `kubectl -n postgres port-forward svc/postgres-rw 5432`.
+
+## MinIO
+
+- `apps/minio/` — hand-written manifests (no chart): 1-replica StatefulSet on a 20Gi `longhorn` volume + ClusterIP Service `minio` (9000 S3 API, 9001 console; no LoadBalancer IP).
+- **Images**: the official MinIO community images are no longer pullable (quay.io returns 401 for every tag, `docker.io/minio/minio` no longer exists), and `minio/mc` is gone as well. Use the Bitnami build from the frozen `bitnamilegacy` repo via the Docker Hub mirror: `docker.1ms.run/bitnamilegacy/minio:2025.5.24-debian-12-r0` (upstream binary 2025-05-24, runs as uid 1001/gid 0, entrypoint builds `server --console-address :9001 --address :9000 /bitnami/minio/data`, so `MINIO_DATA_DIR`/port envs are the defaults and the volume mounts at `/bitnami/minio/data`). Root credentials come from the out-of-band Secret `minio-root` (keys `root-user`/`root-password`, injected as `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`): `kubectl -n minio create secret generic minio-root --from-literal=root-user=admin --from-literal=root-password=<password>`. Never commit the password (public repo).
+- Out-of-band prerequisites: namespaces `cnpg-system`, `postgres`, `minio` are created manually (the repo does not create namespaces) and the Secret above. Everything else is delivered by ArgoCD.
+- Verified end-to-end with SigV4 against `svc/minio:9000` (create/put/get/delete bucket + object). Console: `kubectl -n minio port-forward svc/minio 9001:9001`.
 
 ## KubePilot
 
@@ -87,4 +108,8 @@ python3 -c "import yaml,glob; fs=[f for f in glob.glob('apps/**/*.yaml',recursiv
 # CRD, catching fields this ArgoCD version prunes, e.g. syncPolicy.createNamespace,
 # source.ignoreDifferences)
 kubectl apply --dry-run=server -f argocd/apps/ -f argocd/bootstrap/ -o name
+# CloudNativePG CRDs are far bigger than the client-side apply limit — only SSA works
+kubectl apply --dry-run=server --server-side -f apps/cnpg-crds/ -o name
+# the postgres Cluster CR does not exist until cnpg-crds has synced
+kubectl apply --dry-run=server -f apps/postgres/cluster.yaml -o name
 ```
