@@ -29,7 +29,8 @@ spec:
             runAsGroup: 65534
           containers:
             - name: detector
-              image: alpine/k8s:1.36.2
+              # docker.1ms.run = 1ms.run Docker Hub mirror (upstream: alpine/k8s:1.36.2)
+              image: docker.1ms.run/alpine/k8s:1.36.2
               env:
                 - name: MULTI_NODE_INSTANCES
                   value: "2"

@@ -4,6 +4,9 @@
 # (quay.io/minio/minio answers 401 UNAUTHORIZED, docker.io/minio/minio no longer
 # exists), so this uses the Bitnami-packaged MinIO build from the frozen
 # `bitnamilegacy` repo (same upstream binary, 2025-05-24 release).
+# Pulled through the 1ms.run Docker Hub mirror (docker.1ms.run, free channel,
+# seconds instead of minutes from this network); upstream equivalent:
+# docker.io/bitnamilegacy/minio:2025.5.24-debian-12-r0
 # Its entrypoint runs `minio server --console-address :9001 --address :9000
 # /bitnami/minio/data`, as uid 1001/gid 0.
 # Credentials come from the out-of-band Secret `minio-root` in this namespace
@@ -33,7 +36,7 @@ spec:
         fsGroup: 1001
       containers:
         - name: minio
-          image: docker.io/bitnamilegacy/minio:2025.5.24-debian-12-r0
+          image: docker.1ms.run/bitnamilegacy/minio:2025.5.24-debian-12-r0
           env:
             - name: MINIO_ROOT_USER
               valueFrom:

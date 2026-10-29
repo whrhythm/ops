@@ -22,6 +22,10 @@ spec:
       values: |
         crds:
           create: false
+        # ghcr.1ms.run = 1ms.run GHCR mirror (upstream:
+        # ghcr.io/cloudnative-pg/cloudnative-pg, tag defaults to appVersion 1.30.1)
+        image:
+          repository: ghcr.1ms.run/cloudnative-pg/cloudnative-pg
         resources:
           requests:
             cpu: 50m

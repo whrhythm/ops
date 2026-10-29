@@ -16,7 +16,8 @@ metadata:
   namespace: postgres
 spec:
   instances: 1
-  imageName: ghcr.io/cloudnative-pg/postgresql:17.7
+  # ghcr.1ms.run = 1ms.run GHCR mirror (upstream: ghcr.io/cloudnative-pg/postgresql:17.7)
+  imageName: ghcr.1ms.run/cloudnative-pg/postgresql:17.7
   # Generates the `postgres-superuser` Secret (admin access); the `postgres-app`
   # Secret (db `app`, owner `app`) is always generated.
   enableSuperuserAccess: true
