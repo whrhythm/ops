@@ -1,0 +1,38 @@
+# CloudNativePG operator (chart 0.29.1 -> operator 1.30.1), installed without
+# CRDs: the chart's `crds.create: true` renders a 1.26MB templates/crds file
+# that ArgoCD would client-side apply (over the 256KiB annotation limit) and
+# that would not carry our per-resource SSA annotation. CRDs come from the
+# separate wave -3 Application `cnpg-crds` instead.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  labels:
+    app.kubernetes.io/name: cnpg
+spec:
+  project: default
+  source:
+    repoURL: https://cloudnative-pg.github.io/charts
+    chart: cloudnative-pg
+    targetRevision: 0.29.1
+    helm:
+      values: |
+        crds:
+          create: false
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cnpg-system
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true

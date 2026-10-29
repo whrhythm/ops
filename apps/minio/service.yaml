@@ -1,0 +1,18 @@
+# In-cluster access:
+#   s3      minio.minio.svc.cluster.local:9000
+#   console minio.minio.svc.cluster.local:9001 (port-forward for the browser UI)
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: minio
+spec:
+  selector:
+    app.kubernetes.io/name: minio
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: s3
+    - name: console
+      port: 9001
+      targetPort: console

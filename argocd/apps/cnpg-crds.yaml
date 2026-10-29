@@ -1,0 +1,29 @@
+# CloudNativePG CRDs, vendored from chart cloudnative-pg 0.29.1
+# (templates/crds/crds.yaml). Each CRD carries
+# `argocd.argoproj.io/sync-options: ServerSideApply=true,Delete=false`:
+# `clusters` (~460KB) and `poolers` (~660KB) exceed the 256KiB
+# last-applied-configuration annotation limit of client-side apply, and
+# Delete=false keeps data CRs safe if this Application is removed.
+# No separate wave needed inside this app (CRDs only).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg-crds
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+  labels:
+    app.kubernetes.io/name: cnpg-crds
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/whrhythm/ops.git
+    targetRevision: main
+    path: apps/cnpg-crds
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cnpg-system
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true

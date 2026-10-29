@@ -1,0 +1,84 @@
+# Shared MinIO (S3 API + console). Single node / single drive on Longhorn.
+#
+# Image: the official MinIO community images are not pullable anymore
+# (quay.io/minio/minio answers 401 UNAUTHORIZED, docker.io/minio/minio no longer
+# exists), so this uses the Bitnami-packaged MinIO build from the frozen
+# `bitnamilegacy` repo (same upstream binary, 2025-05-24 release).
+# Its entrypoint runs `minio server --console-address :9001 --address :9000
+# /bitnami/minio/data`, as uid 1001/gid 0.
+# Credentials come from the out-of-band Secret `minio-root` in this namespace
+# (this repo is public — never inline them):
+#   kubectl -n minio create secret generic minio-root \
+#     --from-literal=root-user=admin --from-literal=root-password=<password>
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: minio
+spec:
+  serviceName: minio
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: minio
+    spec:
+      securityContext:
+        # Matches the Bitnami image defaults (uid 1001, gid 0). fsGroup adds
+        # 1001 to the supplementary groups so the Longhorn volume is writable.
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+        - name: minio
+          image: docker.io/bitnamilegacy/minio:2025.5.24-debian-12-r0
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-root
+                  key: root-user
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-root
+                  key: root-password
+          ports:
+            - name: s3
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: s3
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: s3
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /bitnami/minio/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: longhorn
+        resources:
+          requests:
+            storage: 20Gi

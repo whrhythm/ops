@@ -1,0 +1,42 @@
+# Shared PostgreSQL, managed by the CloudNativePG operator (app `cnpg`).
+#
+# Read/write split (services created by the operator):
+#   postgres-rw.postgres.svc:5432  -> primary only (always has an endpoint)
+#   postgres-ro.postgres.svc:5432  -> standbys only (empty on a single node)
+#   postgres-r.postgres.svc:5432   -> any instance
+#
+# `spec.instances` is deliberately NOT managed from git: the CronJob
+# `postgres-topology-detector` sets it to 1 on a single-node cluster and to
+# MULTI_NODE_INSTANCES (2) once more than one Ready node exists. The Application
+# ignores /spec/instances so selfHeal does not revert that patch.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres
+  namespace: postgres
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.7
+  # Generates the `postgres-superuser` Secret (admin access); the `postgres-app`
+  # Secret (db `app`, owner `app`) is always generated.
+  enableSuperuserAccess: true
+  storage:
+    size: 20Gi
+    storageClass: longhorn
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_buffers: 256MB
+  # Preferred (not required) anti-affinity: standbys spread across nodes when
+  # there are several, but everything still schedules on a single node.
+  affinity:
+    enablePodAntiAffinity: true
+    podAntiAffinityType: preferred
+    topologyKey: kubernetes.io/hostname

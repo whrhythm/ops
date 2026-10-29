@@ -1,0 +1,64 @@
+# Keeps the Cluster's instance count in line with the number of Ready nodes:
+#   1 node  -> instances=1 (no streaming replica, no read/write split)
+#   >1 node -> instances=MULTI_NODE_INSTANCES (the operator then runs a primary
+#              plus streaming standbys and the -ro service gets endpoints)
+# Runs in wave 1 of this app so the Cluster CR and CRDs exist before the first
+# patch.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-topology-detector
+  namespace: postgres
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          serviceAccountName: postgres-topology
+          restartPolicy: OnFailure
+          securityContext:
+            runAsUser: 65534
+            runAsGroup: 65534
+          containers:
+            - name: detector
+              image: alpine/k8s:1.36.2
+              env:
+                - name: MULTI_NODE_INSTANCES
+                  value: "2"
+                - name: HOME
+                  value: /tmp
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  ready=$(kubectl get nodes -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' | grep -c True || true)
+                  [ "$ready" -gt 0 ] || ready=1
+                  if [ "$ready" -le 1 ]; then
+                    want=1
+                  else
+                    want="$MULTI_NODE_INSTANCES"
+                  fi
+                  cur=$(kubectl -n postgres get clusters.postgresql.cnpg.io postgres -o jsonpath='{.spec.instances}')
+                  echo "nodes=$ready want=$want current=$cur"
+                  if [ "$cur" != "$want" ]; then
+                    kubectl -n postgres patch clusters.postgresql.cnpg.io postgres --type=merge -p "{\"spec\":{\"instances\":$want}}"
+                    echo "patched instances -> $want"
+                  else
+                    echo "no change"
+                  fi
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 128Mi

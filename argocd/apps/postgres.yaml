@@ -1,0 +1,31 @@
+# Shared PostgreSQL (CloudNativePG Cluster) + node-count detector.
+# `spec.instances` is owned by the detector CronJob, not by git — see the
+# ignoreDifferences block (must live at spec level; the 2.12.3 Application CRD
+# has no spec.source.ignoreDifferences).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgres
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    app.kubernetes.io/name: postgres
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/whrhythm/ops.git
+    targetRevision: main
+    path: apps/postgres
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: postgres
+  ignoreDifferences:
+    - group: postgresql.cnpg.io
+      kind: Cluster
+      jsonPointers:
+        - /spec/instances
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true

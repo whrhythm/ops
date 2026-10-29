@@ -1,0 +1,26 @@
+# Shared MinIO (single node / single drive on Longhorn, ClusterIP only).
+# Requires the out-of-band Secret `minio-root` in namespace `minio`:
+#   kubectl -n minio create secret generic minio-root \
+#     --from-literal=root-user=admin --from-literal=root-password=<password>
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: minio
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    app.kubernetes.io/name: minio
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/whrhythm/ops.git
+    targetRevision: main
+    path: apps/minio
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: minio
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true

@@ -1,0 +1,61 @@
+# Permissions for the topology detector: read nodes, patch the Cluster's
+# instance count in this namespace only.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: postgres-topology
+  namespace: postgres
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: postgres-topology-nodes
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: postgres-topology-nodes
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: postgres-topology-nodes
+subjects:
+  - kind: ServiceAccount
+    name: postgres-topology
+    namespace: postgres
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: postgres-topology-clusters
+  namespace: postgres
+rules:
+  - apiGroups:
+      - postgresql.cnpg.io
+    resources:
+      - clusters
+    verbs:
+      - get
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: postgres-topology-clusters
+  namespace: postgres
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: postgres-topology-clusters
+subjects:
+  - kind: ServiceAccount
+    name: postgres-topology
+    namespace: postgres
