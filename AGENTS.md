@@ -10,7 +10,7 @@ This repo is an ArgoCD GitOps repository (repo: https://github.com/whrhythm/ops.
 
 ## Image pulls (1ms.run mirrors)
 
-This cluster is in mainland China: upstream pulls work but are slow (docker.io layers take minutes). The free 1ms.run channels are used instead — `docker.1ms.run` for Docker Hub and `ghcr.1ms.run` for GHCR (same manifests, ~15s). Only the registry host of an image ref changes; the upstream ref is kept in a comment next to it so it can be reverted if the mirror is unreachable. 1ms.run's other mirrors (quay/gcr/k8s/mcr/nvcr/elastic) need a paid account, so those images still pull directly from upstream.
+This cluster is in mainland China: upstream pulls work but are slow (docker.io layers take minutes). The free 1ms.run channels are used instead — `docker.1ms.run` for Docker Hub and `ghcr.1ms.run` for GHCR (same manifests, ~15s). Only the registry host of an image ref changes; the upstream ref is kept in a comment next to it so it can be reverted if the mirror is unreachable. 1ms.run's other mirrors (quay/gcr/k8s/mcr/nvcr/elastic) need a paid account, so those images still pull directly from upstream. Observed outage: on 2026-10-29 the Docker Hub channel started failing on blob downloads (`cloudfront-docker-cf.mrs.1ms.run ... EOF`) while upstream `docker.io` still worked — Harbor was rolled out with upstream refs for that reason, so retest the mirror before assuming it is healthy.
 
 ## Deploy ordering (sync waves)
 
@@ -19,8 +19,8 @@ Waves are set via the `argocd.argoproj.io/sync-wave` annotation on each `Applica
 - `-4` — `longhorn` (block storage, first so PVCs can use it later)
 - `-3` — `metallb`, `cert-manager`, `capsule` (independent infra charts), `cnpg-crds` (vendored CloudNativePG CRDs)
 - `-2` — `metallb-config` (IPAddressPool + L2Advertisement), `cert-manager-issuer` (self-signed ClusterIssuer), `capsule-tenant` (default Tenant), `cnpg` (operator) — each waits on the CRDs of the chart above
-- `-1` — `signoz` (UI Service takes a MetalLB IP), `apisix` (dataplane + built-in etcd), `otel-gateway` + `otel-agent` (standalone OpenTelemetry Collectors), `postgres` (CNPG Cluster + topology detector), `minio` (shared S3)
-- `0` — `apisix-kic` (needs the APISIX Admin API), `kubepilot`
+- `-1` — `signoz` (UI Service takes a MetalLB IP), `apisix` (dataplane + built-in etcd), `otel-gateway` + `otel-agent` (standalone OpenTelemetry Collectors), `postgres` (CNPG Cluster + topology detector), `minio` (shared S3), `harbor-pki` (internal-CA-issued Harbor TLS/token certs)
+- `0` — `apisix-kic` (needs the APISIX Admin API), `harbor` (needs postgres below it for its database), `kubepilot`
 - `>= 1` — business apps: `aisix` (wave 1)
 
 ## Infrastructure components
@@ -72,6 +72,16 @@ Single-node k3s cluster (`edge`); all values for one node are set inline in each
 - Out-of-band prerequisites: namespaces `cnpg-system`, `postgres`, `minio` are created manually (the repo does not create namespaces) and the Secret above. Everything else is delivered by ArgoCD.
 - Verified end-to-end with SigV4 against `svc/minio:9000` (create/put/get/delete bucket + object). Console: `kubectl -n minio port-forward svc/minio 9001:9001`.
 
+## Harbor (internal registry)
+
+- `harbor` (wave 0) — chart `https://helm.goharbor.io` chart `harbor` `1.19.4` (Harbor 2.15.4), ns `harbor`. The chart no longer bundles postgres/redis subcharts: it runs nginx, portal, core, jobservice, registry(+registryctl) and trivy, plus an internal valkey cache (`goharbor/valkey-photon`). The database is the shared CNPG cluster: `postgres-rw.postgres.svc.cluster.local`, db `registry`, role `harbor`, `sslmode: require` (pg_hba accepts host scram over TCP). UI/API at `https://harbor.k3s.local`, Service `harbor` type LoadBalancer pinned to MetalLB `192.168.10.51` (`metallb.io/loadBalancerIPs`); port 80 redirects 301 to https.
+- Values are **inline in `argocd/apps/harbor.yaml`**: for chart-repo sources ArgoCD resolves `valueFiles` inside the chart's own checkout, so a repo path fails ("no such file or directory") — same inline pattern as signoz/capsule. Storage on `longhorn`: registry 20Gi, jobservice logs 1Gi, redis 1Gi, trivy 5Gi (chart default); `persistence.resourcePolicy: keep` so prune never removes registry data.
+- **Every chart-random secret is pinned to the out-of-band Secret `harbor-secrets`** (keys `secretKey`, `secret`, `CSRF_KEY`, `JOBSERVICE_SECRET`, `REGISTRY_HTTP_SECRET`, `REGISTRY_PASSWD`, `REGISTRY_HTPASSWD`, `password`, `HARBOR_ADMIN_PASSWORD`): the chart uses helm `lookup`/`randAlphaNum`, which ArgoCD cannot run offline, so each sync would otherwise rotate the core secret, XSRF key, shared secrets and the token CA (permanent diff + token invalidation). Knobs used: `existingSecretSecretKey`, `existingSecretAdminPassword(+Key)`, `core.existingSecret`, `core.existingXsrfSecret(+Key)`, `core.secretName`, `jobservice.existingSecret(+Key)`, `registry.existingSecret(+Key)`, `registry.credentials.existingSecret`, `database.external.existingSecret`, `caSecretName`. `scripts/harbor-prereqs.sh` creates the namespace, the Secret and the DB role/database idempotently (DB init needs the `postgres` app ready; it uses `kubectl exec -i` for the psql heredoc).
+- **TLS chain**: containerd's `ca_file` must be a `CA:true` root, and a cert-manager `selfsigned` *leaf* is not one, so `apps/cert-manager/internal-ca.yaml` adds `Certificate internal-ca` (isCA, RSA4096, issuer `selfsigned`) + `ClusterIssuer internal-ca` (kind `ca`). The `harbor-pki` app (wave -1) then issues `harbor-tls` (secret `harbor-tls`, SAN dns `harbor.k3s.local` + ip `192.168.10.51`) and `harbor-core-token` (RSA key pair for the token service; `core.secretName` mounts its `tls.key`). Certs are pinned so the chart's `genCA` never runs and the node CA file stays stable.
+- **Node pulls**: `scripts/harbor-node-registry.sh` (root, once per node, after Harbor is healthy) adds the `/etc/hosts` entry (no internal DNS), writes the CA from secret `harbor-tls` to `/etc/rancher/k3s/harbor-ca.crt`, writes `/etc/rancher/k3s/registries.yaml` (`configs.harbor.k3s.local.tls.ca_file` + robot `auth` — creds default to out-of-band Secret `harbor-robot`, keys `username`/`password`) and restarts k3s (pods keep running). Without it kubelet can neither resolve the name nor trust the CA.
+- **Project / robot (out-of-band, Harbor has no GitOps config)**: private project `internal`; project-level robot `robot$internal+edge-puller` with only `repository:pull` and no expiry (create via `POST /api/v2.0/robots` with `"duration": -1`, `"level": "project"`, permission `{"kind":"project","namespace":"internal","access":[{"resource":"repository","action":"pull"}]}`); its creds live in Secret `harbor-robot`. Admin password: `kubectl -n harbor get secret harbor-secrets -o jsonpath='{.data.HARBOR_ADMIN_PASSWORD}' | base64 -d`. Admins push, nodes pull, anonymous is denied.
+- Verified: `/api/v2.0/ping` 200, admin `systeminfo` 200, HTTP→HTTPS 301; admin pushed `internal/busybox:1.36` (regctl, Docker Hub source), the robot could list tags/get its manifest, anonymous got 401; all pods Running. Images are upstream `docker.io/goharbor/*:v2.15.4` because the 1ms.run Docker Hub channel was failing during rollout (see the image-pulls note).
+
 ## KubePilot
 
 - Upstream: https://github.com/bwalia/kubepilot (Go module `github.com/kubepilot/kubepilot`), pinned at commit `930f0b5f507a6896e59f63294fcdf67a1ecf075c`.
@@ -112,4 +122,7 @@ kubectl apply --dry-run=server -f argocd/apps/ -f argocd/bootstrap/ -o name
 kubectl apply --dry-run=server --server-side -f apps/cnpg-crds/ -o name
 # the postgres Cluster CR does not exist until cnpg-crds has synced
 kubectl apply --dry-run=server -f apps/postgres/cluster.yaml -o name
+# Harbor: health (bypass proxy env, internal CA) and the pinned-secret drift check
+curl -sk --noproxy '*' --resolve harbor.k3s.local:443:192.168.10.51 https://harbor.k3s.local/api/v2.0/ping
+kubectl -n argocd get application harbor-pki harbor -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status
 ```

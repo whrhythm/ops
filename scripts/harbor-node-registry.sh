@@ -2,8 +2,12 @@
 # Make the k3s node's containerd trust (and optionally authenticate to) the
 # in-cluster Harbor. Run as root ON EACH NODE, once, after Harbor is healthy:
 #
-#   sudo scripts/harbor-node-registry.sh                       # public projects
-#   sudo scripts/harbor-node-registry.sh 'robot$proj+name' PASS # private + robot
+#   sudo scripts/harbor-node-registry.sh                       # creds from secret harbor-robot
+#   sudo scripts/harbor-node-registry.sh 'robot$proj+name' PASS # explicit robot creds
+#
+# With no arguments the robot credentials are read from the out-of-band Secret
+# harbor-robot (keys username/password). If it does not exist the node is
+# configured anonymously (public projects only).
 #
 # It writes:
 #   /etc/hosts                       192.168.10.51 harbor.k3s.local
@@ -24,6 +28,12 @@ CA_FILE=/etc/rancher/k3s/harbor-ca.crt
 REGISTRIES=/etc/rancher/k3s/registries.yaml
 
 if [ "$(id -u)" != "0" ]; then echo "run as root (sudo)" >&2; exit 1; fi
+
+if [ -z "$ROBOT_USER" ] && command -v kubectl >/dev/null; then
+  ROBOT_USER="$(kubectl -n harbor get secret harbor-robot -o jsonpath='{.data.username}' 2>/dev/null | base64 -d || true)"
+  ROBOT_PASS="$(kubectl -n harbor get secret harbor-robot -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || true)"
+  [ -n "$ROBOT_USER" ] && echo "==> using robot credentials from secret harbor/harbor-robot"
+fi
 
 echo "==> /etc/hosts"
 if ! grep -qE "[[:space:]]${HOST_NAME//./\\.}([[:space:]]|$)" /etc/hosts; then
