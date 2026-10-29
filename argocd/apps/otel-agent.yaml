@@ -1,0 +1,82 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: otel-agent
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    app.kubernetes.io/name: otel-agent
+spec:
+  project: default
+  source:
+    repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+    chart: opentelemetry-collector
+    targetRevision: 0.178.0
+    helm:
+      values: |
+        mode: daemonset
+        fullnameOverride: otel
+        image:
+          repository: otel/opentelemetry-collector-contrib
+          tag: "0.163.2"
+        command:
+          name: otelcol-contrib
+        presets:
+          hostMetrics:
+            enabled: true
+        alternateConfig:
+          exporters:
+            otlp:
+              endpoint: signoz-otel-collector.signoz.svc.cluster.local:4317
+              tls:
+                insecure: true
+          extensions:
+            health_check:
+              endpoint: ${env:MY_POD_IP}:13133
+          processors:
+            memory_limiter:
+              check_interval: 5s
+              limit_percentage: 80
+              spike_limit_percentage: 25
+            batch: {}
+          service:
+            extensions:
+              - health_check
+            pipelines:
+              metrics:
+                receivers: []
+                processors:
+                  - memory_limiter
+                  - batch
+                exporters:
+                  - otlp
+        service:
+          enabled: false
+        ports:
+          otlp:
+            enabled: false
+          otlp-http:
+            enabled: false
+          jaeger-compact:
+            enabled: false
+          jaeger-thrift:
+            enabled: false
+          jaeger-grpc:
+            enabled: false
+          zipkin:
+            enabled: false
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: otel
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
