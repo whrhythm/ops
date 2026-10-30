@@ -5,8 +5,10 @@ This repo is an ArgoCD GitOps repository (repo: https://github.com/whrhythm/ops.
 ## Layout
 
 - `apps/<app>/` — manifests for each application (one folder per app).
-- `argocd/apps/` — one ArgoCD `Application` object per app. This directory is managed by the app-of-apps parent app.
-- `argocd/bootstrap/apps.yaml` — the parent Application that syncs `argocd/apps/`. It must be applied manually once (`kubectl apply -f argocd/bootstrap/apps.yaml`); after that it manages every app in `argocd/apps/`.
+- `argocd/infra/` — one ArgoCD `Application` object per infrastructure component (storage, networking, TLS/operators, data services, Harbor). Synced by the parent app `infra`.
+- `argocd/apps/` — one ArgoCD `Application` object per business app. Synced by the parent app `apps`.
+- `argocd/bootstrap/infra.yaml` — parent Application for `argocd/infra/`. Applied manually first (`kubectl apply -f argocd/bootstrap/infra.yaml`).
+- `argocd/bootstrap/apps.yaml` — parent Application for `argocd/apps/`. Applied manually **only after** `infra` is fully Synced/Healthy (Harbor included) **and** `scripts/harbor-node-registry.sh` has run on every node — those two files are the bootstrap split and are not managed by anything else.
 
 ## Image pulls (1ms.run mirrors)
 
@@ -14,14 +16,16 @@ This cluster is in mainland China: upstream pulls work but are slow (docker.io l
 
 ## Deploy ordering (sync waves)
 
+Bootstrap happens in two manual stages: `infra` (through Harbor), then the per-node registry script, then `apps`. Waves order resources *inside* each stage; ArgoCD cannot express the host-level step in between, so it stays an explicit gate.
+
 Waves are set via the `argocd.argoproj.io/sync-wave` annotation on each `Application`:
 
 - `-4` — `longhorn` (block storage, first so PVCs can use it later)
 - `-3` — `metallb`, `cert-manager`, `capsule` (independent infra charts), `cnpg-crds` (vendored CloudNativePG CRDs)
 - `-2` — `metallb-config` (IPAddressPool + L2Advertisement), `cert-manager-issuer` (self-signed ClusterIssuer), `capsule-tenant` (default Tenant), `cnpg` (operator) — each waits on the CRDs of the chart above
 - `-1` — `signoz` (UI Service takes a MetalLB IP), `apisix` (dataplane + built-in etcd), `otel-gateway` + `otel-agent` (standalone OpenTelemetry Collectors), `postgres` (CNPG Cluster + topology detector), `minio` (shared S3), `harbor-pki` (internal-CA-issued Harbor TLS/token certs)
-- `0` — `apisix-kic` (needs the APISIX Admin API), `harbor` (needs postgres below it for its database), `kubepilot`
-- `>= 1` — business apps: `aisix` (wave 1)
+- `0` — `apisix-kic` (needs the APISIX Admin API), `harbor` (needs postgres below it for its database)
+- `>= 1` — business apps (parent `apps`): `kubepilot` (wave 0), `aisix` (wave 1)
 
 ## Infrastructure components
 
@@ -105,7 +109,7 @@ Single-node k3s cluster (`edge`); all values for one node are set inline in each
 ## Adding a new app
 
 1. Manifests (or a vendored chart) under `apps/<app>/`.
-2. `argocd/apps/<app>.yaml` — copy an existing Application object; set `source.path`, `destination.namespace`, and the sync-wave annotation.
+2. `argocd/infra/<app>.yaml` for infrastructure, `argocd/apps/<app>.yaml` for business apps — copy an existing Application object; set `source.path`, `destination.namespace`, and the sync-wave annotation (and the app-of-apps label is added by ArgoCD itself).
 
 ## Verification
 
@@ -117,7 +121,7 @@ python3 -c "import yaml,glob; fs=[f for f in glob.glob('apps/**/*.yaml',recursiv
 # server-side check (needs cluster; strict-decodes against the live Application
 # CRD, catching fields this ArgoCD version prunes, e.g. syncPolicy.createNamespace,
 # source.ignoreDifferences)
-kubectl apply --dry-run=server -f argocd/apps/ -f argocd/bootstrap/ -o name
+kubectl apply --dry-run=server -f argocd/infra/ -f argocd/apps/ -f argocd/bootstrap/ -o name
 # CloudNativePG CRDs are far bigger than the client-side apply limit — only SSA works
 kubectl apply --dry-run=server --server-side -f apps/cnpg-crds/ -o name
 # the postgres Cluster CR does not exist until cnpg-crds has synced

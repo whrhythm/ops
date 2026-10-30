@@ -1,0 +1,23 @@
+# Infrastructure apps: storage -> networking/TLS -> operators -> data services
+# -> Harbor. Deployed first; the rest (argocd/apps, parent `apps`) only after
+# Harbor is healthy and scripts/harbor-node-registry.sh has run on every node.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: infra
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: infra
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/whrhythm/ops.git
+    targetRevision: main
+    path: argocd/infra
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
