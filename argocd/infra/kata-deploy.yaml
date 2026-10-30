@@ -1,0 +1,26 @@
+# WARNING: this installer changes node runtime config and restarts k3s.
+# On the single-node cluster this temporarily interrupts the control plane.
+# Review apps/kata-deploy/README.md and image access before first sync.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kata-deploy
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    app.kubernetes.io/name: kata-deploy
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/whrhythm/ops.git
+    targetRevision: main
+    path: apps/kata-deploy/kata-deploy
+    helm:
+      valueFiles:
+        - /apps/kata-deploy/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  # Intentionally no automated sync: parent sync creates the Application, but
+  # installation requires an explicit sync of this child Application.

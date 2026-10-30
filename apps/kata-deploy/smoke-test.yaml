@@ -1,0 +1,25 @@
+# Manual smoke test only. Create the kata-test namespace separately.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kata-smoke
+  namespace: kata-test
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 180
+  template:
+    spec:
+      runtimeClassName: kata-qemu-runtime-rs
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      containers:
+        - name: check
+          image: harbor.k3s.local/internal/busybox:1.36
+          command: ["sh", "-c", "uname -a; id; echo kata-smoke-ok"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

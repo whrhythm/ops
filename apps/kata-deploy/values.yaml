@@ -1,0 +1,32 @@
+# Vendored official kata-deploy 4.3.1; see README.md before enabling.
+deploymentMode: job
+k8sDistribution: k3s
+
+# Only the existing single node; expand deliberately after hardware checks.
+nodeSelector:
+  kubernetes.io/hostname: edge
+job:
+  nodes: [edge]
+  parallelism: 1
+  dispatcherImage:
+    # Upstream ghcr.io/kata-containers/k8s-job-dispatcher:0.3.0
+    reference: ghcr.nju.edu.cn/kata-containers/k8s-job-dispatcher
+    tag: "0.3.0"
+
+image:
+  # Official upstream; node image pull connectivity must be verified first.
+  reference: quay.io/kata-containers/kata-deploy
+  tag: "4.3.1"
+imagePullPolicy: IfNotPresent
+
+# Keep the initial surface small; this class uses QEMU and runtime-rs.
+shims:
+  disableAll: true
+  qemu-runtime-rs:
+    enabled: true
+
+# Keep the cluster's default runtime unchanged.
+runtimeClasses:
+  enabled: true
+  createDefault: false
+
