@@ -1,6 +1,6 @@
 # Kata Containers on the single-node k3s cluster
 
-This is a staged, **not yet deployed** Kata Containers 4.3.1 installation.
+Kata Containers 4.3.1 was installed on node `edge` on 2026-10-30.
 The official chart archive was fetched via the NJU GHCR mirror; its SHA-256
 `c25077416d37c178bf72df0204ea3ba89418efad1b1299b0d5d34ec02556187e`
 matches the upstream 4.3.1 release asset. The chart is vendored because the
@@ -28,8 +28,8 @@ default runtime; only Pods explicitly requesting `kata-qemu-runtime-rs` use Kata
 - Check spare disk space. After cleanup, the node reported 572 GiB available
   and 35% used on 2026-10-30; monitor Longhorn free capacity during install.
 - Confirm an operator can access the node console and restore k3s if it does
-  not restart successfully. SSH login was available, but passwordless sudo was
-  not verified; keep an independent recovery path.
+  not restart successfully. SSH login was available, but `sudo -n` required a
+  password; keep an independent recovery path.
 - Confirm workload disruption is acceptable and take the cluster's usual
   backups. Record the existing containerd configuration and k3s service state.
 
@@ -63,6 +63,11 @@ Run `apps/kata-deploy/smoke-test.yaml` manually in a dedicated test namespace.
 Compare its `uname -r` output with `uname -r` on the host: a Kata guest kernel
 should differ. Verify networking, storage, shutdown and scheduling as needed.
 Delete only the test Job/namespace after checking results.
+
+The 2026-10-30 smoke test completed with guest kernel `6.18.56`; the host ran
+`5.15.0-198-generic`. Argo CD reported `kata-deploy` Synced/Healthy after the
+installer restarted k3s. This verifies a basic Kata Job, not OpenHands,
+network/storage isolation, Kubernetes Secret propagation or multi-tenancy.
 
 ## Rollback
 
