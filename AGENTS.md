@@ -12,7 +12,8 @@ This repo is an ArgoCD GitOps repository (repo: https://github.com/whrhythm/ops.
 
 ## Image pulls (1ms.run mirrors)
 
-This cluster is in mainland China: upstream pulls work but are slow (docker.io layers take minutes). The free 1ms.run channels are used instead — `docker.1ms.run` for Docker Hub and `ghcr.1ms.run` for GHCR (same manifests, ~15s). Only the registry host of an image ref changes; the upstream ref is kept in a comment next to it so it can be reverted if the mirror is unreachable. 1ms.run's other mirrors (quay/gcr/k8s/mcr/nvcr/elastic) need a paid account, so those images still pull directly from upstream. Observed outage: on 2026-10-29 the Docker Hub channel started failing on blob downloads (`cloudfront-docker-cf.mrs.1ms.run ... EOF`) while upstream `docker.io` still worked — Harbor was rolled out with upstream refs for that reason, so retest the mirror before assuming it is healthy.
+This cluster is in mainland China: upstream pulls work but are slow (docker.io layers take minutes). The free 1ms.run channels are used instead — `docker.1ms.run` for Docker Hub and `ghcr.1ms.run` for GHCR (same manifests, ~15s). Only the registry host of an image ref changes; the upstream ref is kept in a comment next to it so it can be reverted if the mirror is unreachable. 1ms.run's other mirrors (quay/gcr/k8s/mcr/nvcr/elastic) need a paid account, so those images still pull directly from upstream. Observed outage: on 2026-10-29 the Docker Hub channel started failing on blob downloads (`cloudfront-docker-cf.mrs.1ms.run ... EOF`) while upstream `docker.io` still worked — Harbor was rolled out with upstream refs for that reason, and on 2026-10-30 the GHCR channel was failing the same way (`ghcr-cf.mrs.1ms.run ... EOF`) while manifests still resolved. So retest the mirror before assuming it is healthy. Working fallbacks on 2026-10-30: `ghcr.nju.edu.cn` (manifest + blobs, ~2.8MB/s) and pushing large images into Harbor's `internal` project (see Harbor section).
+- **Harbor blob-upload TTL gotcha**: the registry expires blob upload sessions after 5 minutes. Streaming a copy from a slow source (regctl/skopeo `copy` over ghcr.io, ~1-2MB/s) breaks mid-copy: the final commit PUT hits the expired session (`stream error: PROTOCOL_ERROR`, then `404 not found` on the chunk). For images > ~100MB from slow sources use the two-step: `regctl image export -p linux/amd64 <src> img.tar` (plain download, no upload session) then `regctl image import <harbor-ref> img.tar` (LAN-fast).
 
 ## Deploy ordering (sync waves)
 
@@ -22,10 +23,10 @@ Waves are set via the `argocd.argoproj.io/sync-wave` annotation on each `Applica
 
 - `-4` — `longhorn` (block storage, first so PVCs can use it later)
 - `-3` — `metallb`, `cert-manager`, `capsule` (independent infra charts), `cnpg-crds` (vendored CloudNativePG CRDs)
-- `-2` — `metallb-config` (IPAddressPool + L2Advertisement), `cert-manager-issuer` (self-signed ClusterIssuer), `capsule-tenant` (default Tenant), `cnpg` (operator) — each waits on the CRDs of the chart above
-- `-1` — `signoz` (UI Service takes a MetalLB IP), `apisix` (dataplane + built-in etcd), `otel-gateway` + `otel-agent` (standalone OpenTelemetry Collectors), `postgres` (CNPG Cluster + topology detector), `minio` (shared S3), `harbor-pki` (internal-CA-issued Harbor TLS/token certs)
+- `-2` — `metallb-config` (IPAddressPool + L2Advertisement), `cert-manager-issuer` (self-signed ClusterIssuer), `capsule-tenant` (default Tenant), `cnpg` (operator), `agent-sandbox-crds` (vendored agent-sandbox CRDs) — each waits on the CRDs of the chart above
+- `-1` — `signoz` (UI Service takes a MetalLB IP), `apisix` (dataplane + built-in etcd), `otel-gateway` + `otel-agent` (standalone OpenTelemetry Collectors), `postgres` (CNPG Cluster + topology detector), `minio` (shared S3), `harbor-pki` (internal-CA-issued Harbor TLS/token certs), `agent-sandbox` (controller, needs its CRDs)
 - `0` — `apisix-kic` (needs the APISIX Admin API), `harbor` (needs postgres below it for its database)
-- `>= 1` — business apps (parent `apps`): `kubepilot` (wave 0), `aisix` (wave 1)
+- `>= 1` — business apps (parent `apps`): `kubepilot` (wave 0), `aisix` (wave 1), `open-webui` (wave 1)
 
 ## Infrastructure components
 
@@ -73,7 +74,7 @@ Single-node k3s cluster (`edge`); all values for one node are set inline in each
 
 - `apps/minio/` — hand-written manifests (no chart): 1-replica StatefulSet on a 20Gi `longhorn` volume + ClusterIP Service `minio` (9000 S3 API, 9001 console; no LoadBalancer IP).
 - **Images**: the official MinIO community images are no longer pullable (quay.io returns 401 for every tag, `docker.io/minio/minio` no longer exists), and `minio/mc` is gone as well. Use the Bitnami build from the frozen `bitnamilegacy` repo via the Docker Hub mirror: `docker.1ms.run/bitnamilegacy/minio:2025.5.24-debian-12-r0` (upstream binary 2025-05-24, runs as uid 1001/gid 0, entrypoint builds `server --console-address :9001 --address :9000 /bitnami/minio/data`, so `MINIO_DATA_DIR`/port envs are the defaults and the volume mounts at `/bitnami/minio/data`). Root credentials come from the out-of-band Secret `minio-root` (keys `root-user`/`root-password`, injected as `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`): `kubectl -n minio create secret generic minio-root --from-literal=root-user=admin --from-literal=root-password=<password>`. Never commit the password (public repo).
-- Out-of-band prerequisites: namespaces `cnpg-system`, `postgres`, `minio` are created manually (the repo does not create namespaces) and the Secret above. Everything else is delivered by ArgoCD.
+- Out-of-band prerequisites: namespaces `cnpg-system`, `postgres`, `minio`, `openwebui`, `sandbox-demo` are created manually (the repo does not create namespaces) and the Secret above, plus `openwebui-secrets` (ns `openwebui`, keys `openai-api-key`/`webui-secret-key`; LLM key copied from `kubepilot-llm`). Everything else is delivered by ArgoCD.
 - Verified end-to-end with SigV4 against `svc/minio:9000` (create/put/get/delete bucket + object). Console: `kubectl -n minio port-forward svc/minio 9001:9001`.
 
 ## Harbor (internal registry)
@@ -85,6 +86,13 @@ Single-node k3s cluster (`edge`); all values for one node are set inline in each
 - **Node pulls**: `scripts/harbor-node-registry.sh` (root, once per node, after Harbor is healthy) adds the `/etc/hosts` entry (no internal DNS), writes the CA from secret `harbor-tls` to `/etc/rancher/k3s/harbor-ca.crt`, writes `/etc/rancher/k3s/registries.yaml` (`configs.harbor.k3s.local.tls.ca_file` + robot `auth` — creds default to out-of-band Secret `harbor-robot`, keys `username`/`password`) and restarts k3s (pods keep running). Without it kubelet can neither resolve the name nor trust the CA. The k3s restart may log `Failed to allocate directory watch: Too many open files` (inotify `max_user_instances`, default 128); it is harmless — raise `fs.inotify.max_user_instances` if it bothers you.
 - **Project / robot (out-of-band, Harbor has no GitOps config)**: private project `internal`; project-level robot `robot$internal+edge-puller` with only `repository:pull` and no expiry (create via `POST /api/v2.0/robots` with `"duration": -1`, `"level": "project"`, permission `{"kind":"project","namespace":"internal","access":[{"resource":"repository","action":"pull"}]}`); its creds live in Secret `harbor-robot`. Admin password: `kubectl -n harbor get secret harbor-secrets -o jsonpath='{.data.HARBOR_ADMIN_PASSWORD}' | base64 -d`. Admins push, nodes pull, anonymous is denied.
 - Verified: `/api/v2.0/ping` 200, admin `systeminfo` 200, HTTP→HTTPS 301; admin pushed `internal/busybox:1.36`/`1.37` (regctl, Docker Hub source), the robot could list tags/get manifests, anonymous got 401; all pods Running. Node side: after running the node script, `sudo k3s crictl pull harbor.k3s.local/internal/busybox:1.36` succeeds and an in-cluster Pod with `image: harbor.k3s.local/internal/busybox:1.37` (not present locally) reaches Running with `imageID=harbor.k3s.local/internal/busybox@sha256:…`, i.e. manifest + blobs really came through Harbor with the robot credentials. Images are upstream `docker.io/goharbor/*:v2.15.4` because the 1ms.run Docker Hub channel was failing during rollout (see the image-pulls note).
+
+## Agent Sandbox (kubernetes-sigs/agent-sandbox)
+
+- `agent-sandbox-crds` (wave -2) + `agent-sandbox` (wave -1) — vendored release **v1.0.9** (`sandbox-with-extensions.yaml`, 2026-10-29), split under `apps/agent-sandbox/`: 4 CRDs, one file each (`sandboxes` ~199KiB and `sandboxtemplates` ~205KiB are close to the 256KiB client-side-apply limit, so **all four** carry `argocd.argoproj.io/sync-options: ServerSideApply=true,Delete=false`, like cnpg-crds) + `controller.yaml` (ns `agent-sandbox-system` with `Prune=false`, SA, 2×ClusterRole/CRB, Service, Deployment). To upgrade: re-download the release manifest and re-split the same way.
+- Controller image `harbor.k3s.local/internal/agent-sandbox-controller:v1.0.9` (pushed via Harbor; upstream `registry.k8s.io/agent-sandbox/agent-sandbox-controller:v1.0.9`), runs `--leader-elect --extensions`, metrics 8080 / healthz 8081, requests 50m/128Mi limits 500m/512Mi (added locally). API only — no UI. Kinds: `Sandbox` plus `SandboxTemplate`/`SandboxClaim`/`SandboxWarmPool` (`agents.x-k8s.io` / `extensions.agents.x-k8s.io`, both v1beta1).
+- **Isolation**: uses the node's default runtime (runc). This k3s has no gVisor/Kata, so isolation is weak — trusted workloads only.
+- Smoke test: `kubectl -n sandbox-demo apply -f apps/agent-sandbox/examples/hello-sandbox.yaml` (busybox from Harbor; applied manually, not ArgoCD-owned) → `kubectl -n sandbox-demo get sandbox` Ready, `exec` into the pod, then delete.
 
 ## KubePilot
 
@@ -106,6 +114,13 @@ Single-node k3s cluster (`edge`); all values for one node are set inline in each
 - Listeners: proxy `:3000`, admin `:3001` (`/livez` + `/readyz` live here — probes point at it; admin key via `${AISIX_ADMIN_KEY}`), prometheus `:9090`.
 - Secret: out-of-band `aisix-admin` in ns `aisix`, key `admin-key` (`kubectl create secret generic aisix-admin -n aisix --from-literal=admin-key=<key>`); injected as env `AISIX_ADMIN_KEY`.
 
+## Open WebUI
+
+- `open-webui` (wave 1) — chart `https://helm.openwebui.com` chart `open-webui` `8.22.1` (app 0.6.43), ns `openwebui`. Values are **inline in `argocd/apps/open-webui.yaml`** (chart-repo source, same pattern as Harbor). Image `harbor.k3s.local/internal/open-webui:0.6.43` (upstream `ghcr.io/open-webui/open-webui:0.6.43`): pushed to Harbor on 2026-10-30 via export/import because ghcr.1ms.run was broken and a direct streaming push into Harbor died on the 5-min blob-upload TTL (see Image pulls).
+- LLM: the same OpenAI-compatible endpoint as kubepilot, `http://192.168.10.30:4000/v1` (model `glm-5.3-flash`). The chart's `openaiApiKey` must stay `""` — a non-empty value is inlined as a plain env var and this repo is public. The key is injected via `extraEnvVars` secretKeyRef from the out-of-band Secret `openwebui-secrets` in ns `openwebui` (keys `openai-api-key`, `webui-secret-key`). `WEBUI_SECRET_KEY` is pinned the same way so sessions/encrypted data survive PVC recreation.
+- Bundled `ollama`/`pipelines`/`tika` subcharts are disabled (external endpoint only); `websocket` is off (one replica). Storage: SQLite in the chart's 10Gi `longhorn` PVC (StatefulSet `open-webui`).
+- Access: Service LoadBalancer pinned to MetalLB `192.168.10.52`, port 80, plain http (LAN). First visitor becomes the admin via the signup page (signup stays open).
+
 ## Adding a new app
 
 1. Manifests (or a vendored chart) under `apps/<app>/`.
@@ -124,6 +139,8 @@ python3 -c "import yaml,glob; fs=[f for f in glob.glob('apps/**/*.yaml',recursiv
 kubectl apply --dry-run=server -f argocd/infra/ -f argocd/apps/ -f argocd/bootstrap/ -o name
 # CloudNativePG CRDs are far bigger than the client-side apply limit — only SSA works
 kubectl apply --dry-run=server --server-side -f apps/cnpg-crds/ -o name
+# agent-sandbox CRDs are close to the limit — same SSA dry-run
+kubectl apply --dry-run=server --server-side -f apps/agent-sandbox/crds/ -o name
 # the postgres Cluster CR does not exist until cnpg-crds has synced
 kubectl apply --dry-run=server -f apps/postgres/cluster.yaml -o name
 # Harbor: health (bypass proxy env, internal CA) and the pinned-secret drift check

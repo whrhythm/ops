@@ -1,0 +1,23 @@
+# Example Sandbox CR to smoke-test the agent-sandbox platform.
+# Applied manually (not owned by any ArgoCD Application):
+#   kubectl -n sandbox-demo apply -f apps/agent-sandbox/examples/hello-sandbox.yaml
+# Verify:  kubectl -n sandbox-demo get sandbox hello-sandbox   # Ready=True
+#          kubectl -n sandbox-demo exec <pod> -- echo ok       # pod from `get pods`
+# Cleanup: kubectl -n sandbox-demo delete sandbox hello-sandbox
+apiVersion: agents.x-k8s.io/v1beta1
+kind: Sandbox
+metadata:
+  name: hello-sandbox
+  namespace: sandbox-demo
+spec:
+  shutdownPolicy: Delete
+  podTemplate:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: busybox
+        image: harbor.k3s.local/internal/busybox:1.37
+        command:
+        - sh
+        - -c
+        - echo hello from sandbox; sleep 3600

@@ -1,0 +1,27 @@
+# kubernetes-sigs/agent-sandbox controller (v1.0.9): the Sandbox
+# reconciler, vendored manifest in apps/agent-sandbox/controller.yaml.
+# CRDs come from the separate wave -2 Application `agent-sandbox-crds`.
+# Image is pulled from the internal Harbor mirror (upstream:
+# registry.k8s.io/agent-sandbox/agent-sandbox-controller:v1.0.9).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: agent-sandbox
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    app.kubernetes.io/name: agent-sandbox
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/whrhythm/ops.git
+    targetRevision: main
+    path: apps/agent-sandbox/controller.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: agent-sandbox-system
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true

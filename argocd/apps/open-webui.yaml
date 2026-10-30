@@ -1,0 +1,79 @@
+# Open WebUI (chart 8.22.1 -> app 0.6.43), the LLM chat UI.
+# Talks to the OpenAI-compatible endpoint used by kubepilot
+# (http://192.168.10.30:4000/v1, model glm-5.3-flash); the key never
+# touches the repo and comes from the out-of-band Secret
+# `openwebui-secrets` (key `openai-api-key`). `openaiApiKey` must stay
+# empty: the chart would inline it as a plain env var.
+# WEBUI_SECRET_KEY is pinned from the same Secret so sessions/encrypted
+# data survive PVC recreation.
+# Storage: SQLite in the chart's PVC on `longhorn`. UI on MetalLB
+# 192.168.10.52, port 80 (http, LAN).
+# The bundled ollama/pipelines/tika subcharts are disabled (external
+# endpoint only) and websocket needs no redis at one replica.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: open-webui
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    app.kubernetes.io/name: open-webui
+spec:
+  project: default
+  source:
+    repoURL: https://helm.openwebui.com
+    chart: open-webui
+    targetRevision: 8.22.1
+    helm:
+      values: |
+        image:
+          # upstream: ghcr.io/open-webui/open-webui:0.6.43
+          repository: harbor.k3s.local/internal/open-webui
+          tag: "0.6.43"
+        ollama:
+          enabled: false
+        pipelines:
+          enabled: false
+        tika:
+          enabled: false
+        websocket:
+          enabled: false
+        enableOpenaiApi: true
+        openaiBaseApiUrl: http://192.168.10.30:4000/v1
+        openaiApiKey: ""
+        extraEnvVars:
+          - name: OPENAI_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: openwebui-secrets
+                key: openai-api-key
+          - name: WEBUI_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: openwebui-secrets
+                key: webui-secret-key
+        serviceAccount:
+          name: open-webui
+        persistence:
+          enabled: true
+          size: 10Gi
+          storageClass: longhorn
+        service:
+          type: LoadBalancer
+          annotations:
+            metallb.io/loadBalancerIPs: 192.168.10.52
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 2Gi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openwebui
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
