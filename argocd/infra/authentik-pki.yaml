@@ -1,0 +1,26 @@
+# Internal-CA-issued TLS certificate for Authentik (same pattern as
+# harbor-pki): the server terminates TLS on 9443 with this cert, mounted at
+# /certs by the `authentik` Application. Needs the `internal-ca`
+# ClusterIssuer (wave -2) and the CNPG cluster below is not required here.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: authentik-pki
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    app.kubernetes.io/name: authentik-pki
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/whrhythm/ops.git
+    targetRevision: main
+    path: apps/authentik-pki
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: authentik
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true

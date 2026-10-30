@@ -1,0 +1,26 @@
+# Certificate for Authentik (issued by the internal CA in apps/cert-manager).
+#
+# authentik-tls: the server terminates TLS itself on 9443 — the chart has no
+# TLS values, so the secret is mounted at /certs (cert.pem/key.pem are the
+# file names the image looks for) via the chart's global.volumes. SAN covers
+# the LAN hostname and the MetalLB IP.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: authentik-tls
+  namespace: authentik
+spec:
+  secretName: authentik-tls
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  dnsNames:
+    - authentik.k3s.local
+  ipAddresses:
+    - 192.168.10.53
+  issuerRef:
+    name: internal-ca
+    kind: ClusterIssuer
+    group: cert-manager.io

@@ -1,0 +1,102 @@
+# Authentik — the Identity Provider (OIDC/OAuth2/SAML/LDAP), the cluster's
+# SSO endpoint at https://authentik.k3s.local (MetalLB 192.168.10.53).
+#
+# Official chart (http index repo, reachable from here, subcharts bundled in
+# the package — no vendoring needed): https://charts.goauthentik.io,
+# `authentik` 2026.8.5. 2026.x needs no Redis (removed upstream).
+#
+# Components: one `server` Deployment (HTTP :9000 for probes + HTTPS :9443)
+# and one `worker` Deployment (task queue), both on the same image
+# (pushed to the internal Harbor; upstream
+# ghcr.io/goauthentik/server:2026.8.5, amd64 ~378MB).
+#
+# Database: the shared CloudNativePG cluster (app `postgres`, wave -1),
+# database/role `authentik` (created by scripts/authentik-prereqs.sh),
+# sslmode=require (pg_hba allows host scram over TCP) — same pattern as
+# Harbor. The chart's bundled bitnami postgresql subchart stays disabled
+# (its default).
+#
+# Every config value the chart would otherwise randomize or read inline is
+# pinned to the out-of-band Secret `authentik-config` via
+# `authentik.existingSecret.secretName` — keys are AUTHENTIK_* env var names
+# (consumed via envFrom): AUTHENTIK_SECRET_KEY, AUTHENTIK_POSTGRESQL__*,
+# AUTHENTIK_STORAGE__* (file storage = S3, MinIO bucket `authentik`).
+#
+# TLS: the chart has no TLS values; the server auto-terminates TLS on 9443
+# from /certs (cert.pem/key.pem). The internal-CA secret `authentik-tls`
+# (app `authentik-pki`, wave -1) is mounted there via global.volumes.
+# Clients need the /etc/hosts entry (192.168.10.53 authentik.k3s.local) and
+# the internal CA, like for Harbor.
+#
+# First visit: set the `akadmin` password in the setup flow (no out-of-band
+# admin password). Migrations run in the server container on startup.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: authentik
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  labels:
+    app.kubernetes.io/name: authentik
+spec:
+  project: default
+  source:
+    repoURL: https://charts.goauthentik.io
+    chart: authentik
+    targetRevision: 2026.8.5
+    helm:
+      values: |
+        global:
+          image:
+            # upstream: ghcr.io/goauthentik/server (server and worker share
+            # this image; tag = chart appVersion)
+            repository: harbor.k3s.local/internal/goauthentik-server
+            tag: "2026.8.5"
+          # /certs for the server's self-terminated TLS on 9443 (mounted on
+          # server AND worker — the worker also serves outposts).
+          volumes:
+            - name: certs
+              secret:
+                secretName: authentik-tls
+                items:
+                  - key: tls.crt
+                    path: cert.pem
+                  - key: tls.key
+                    path: key.pem
+          volumeMounts:
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+        authentik:
+          existingSecret:
+            secretName: authentik-config
+        server:
+          service:
+            type: LoadBalancer
+            annotations:
+              # Consumes a fixed IP from the `default` pool (80 -> :9000,
+              # 443 -> :9443).
+              metallb.io/loadBalancerIPs: 192.168.10.53
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+        worker:
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: authentik
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
