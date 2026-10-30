@@ -22,9 +22,10 @@
 # (consumed via envFrom): AUTHENTIK_SECRET_KEY, AUTHENTIK_POSTGRESQL__*,
 # AUTHENTIK_STORAGE__* (file storage = S3, MinIO bucket `authentik`).
 #
-# TLS: the chart has no TLS values; the server auto-terminates TLS on 9443
-# from /certs (cert.pem/key.pem). The internal-CA secret `authentik-tls`
-# (app `authentik-pki`, wave -1) is mounted there via global.volumes.
+# TLS: the worker discovers a matched keypair in /certs/authentik-web/ and
+# imports it as `authentik-web`. The default Brand must select this keypair as
+# its Web Certificate; mounting the secret alone does not configure HTTPS.
+# cert-manager renewals update the discovered keypair in place.
 # Clients need the /etc/hosts entry (192.168.10.53 authentik.k3s.local) and
 # the internal CA, like for Harbor.
 #
@@ -53,17 +54,17 @@ spec:
             # this image; tag = chart appVersion)
             repository: harbor.k3s.local/internal/goauthentik-server
             tag: "2026.8.5"
-          # /certs for the server's self-terminated TLS on 9443 (mounted on
-          # server AND worker — the worker also serves outposts).
+          # The worker discovers both files as one named certificate. The
+          # server serves the certificate selected by the default Brand.
           volumes:
             - name: certs
               secret:
                 secretName: authentik-tls
                 items:
                   - key: tls.crt
-                    path: cert.pem
+                    path: authentik-web/tls.crt
                   - key: tls.key
-                    path: key.pem
+                    path: authentik-web/tls.key
           volumeMounts:
             - name: certs
               mountPath: /certs
