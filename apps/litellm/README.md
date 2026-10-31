@@ -26,7 +26,7 @@ scripts/litellm-prereqs.sh <siliconrouter-api-key>
 scripts/litellm-user-key.sh <username> [月度预算美元]   # 默认 $5/月
 ```
 
-key 限定模型 `deepseek-v4-flash-v2`，`max_budget` 按月重置，超额后 LiteLLM 返回 429。**token 只在创建时打印一次**，请立刻交付用户；丢失需到 LiteLLM UI 轮换或删除后重建。
+key 限定模型 `deepseek-v4-flash-v2`，`max_budget` 按月重置，超额后 LiteLLM 返回 HTTP 422（`type: budget_exceeded`；此版本不是 429）。**token 只在创建时打印一次**，请立刻交付用户；丢失需到 LiteLLM UI 轮换或删除后重建。
 
 本版本的 `/key/generate` 语义（实测 v1.109.0-dev.2）：
 
@@ -57,10 +57,10 @@ curl -s -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
 # 计量：master key 查 per-key spend（配了 model_info 后 spend 才非 0）
 MASTER=$(kubectl -n litellm get secret litellm-secrets -o jsonpath='{.data.LITELLM_MASTER_KEY}' | base64 -d)
 curl -s -H "Authorization: Bearer $MASTER" http://127.0.0.1:14000/spend/keys | python3 -m json.tool
-# 预算 429：把测试 key 的预算压到极小（单价低，靠真实花费跑不完 $0.01）
+# 预算超限：把测试 key 的预算压到极小（单价低，靠真实花费跑不完 $0.01）
 curl -s -X POST -H "Authorization: Bearer $MASTER" -H 'Content-Type: application/json' \
   -d "{\"key\": \"$KEY\", \"max_budget\": 0.00001}" http://127.0.0.1:14000/key/update
-# 再请求一次应返回 429（spend > max_budget）
+# 再请求一次应返回 422 budget_exceeded（spend > max_budget）
 ```
 
 LibreChat 侧：登录用户粘贴 key 后，模型列表出现 `deepseek-v4-flash-v2` 且对话成功。
