@@ -16,6 +16,8 @@ data:
   PLATFORM_OIDC_CLIENT_ID: platform-console
   PLATFORM_OIDC_REQUIRED_SCOPE: platform-api
   PLATFORM_ADMIN_GROUP: platform-admins
+  PLATFORM_LITELLM_URL: http://litellm.litellm.svc.cluster.local:4000
+  PLATFORM_LITELLM_MODELS: deepseek-v4-flash-v2
   SSL_CERT_FILE: /etc/platform-ca/internal-ca.crt
   PYTHONDONTWRITEBYTECODE: "1"
   PYTHONUNBUFFERED: "1"
