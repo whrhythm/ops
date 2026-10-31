@@ -1,0 +1,28 @@
+# The standalone KIC is outside APISIX's loopback-only default Admin API ACL.
+# Permit pod CIDRs in APISIX config, then restrict 9180 to KIC by pod identity.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: apisix-admin-controller-only
+  namespace: apisix
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: apisix
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 9080
+        - protocol: TCP
+          port: 9443
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: apisix-ingress-controller
+      ports:
+        - protocol: TCP
+          port: 9180
+    - from:
+        - ipBlock:
+            cidr: 192.168.10.30/32

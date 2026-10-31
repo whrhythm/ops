@@ -23,6 +23,11 @@ spec:
           tls:
             nodePort: 30443
         apisix:
+          admin:
+            allow:
+              ipList:
+                - 127.0.0.0/8
+                - 172.16.0.0/16
           ssl:
             enabled: true
           pluginAttrs:
