@@ -35,6 +35,16 @@ spec:
       ports:
         - {protocol: UDP, port: 53}
         - {protocol: TCP, port: 53}
+    # NodePort traffic is DNATed to the APISIX Pod before Calico evaluates egress.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: apisix
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: apisix
+      ports:
+        - {protocol: TCP, port: 9443}
     - to:
         - ipBlock:
             cidr: 192.168.10.30/32

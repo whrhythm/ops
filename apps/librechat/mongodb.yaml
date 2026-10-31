@@ -35,7 +35,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: mongodb
-          image: harbor.k3s.local/internal/librechat-mongo:8.0.20
+          image: harbor.k3s.local/internal/librechat-mongo@sha256:4c3c21dadb6373a36c9c4f95fde0cd9bf62afc1baa2fba38a8ca76ecc8b0b0e3
           ports:
             - containerPort: 27017
           env:
