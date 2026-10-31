@@ -25,7 +25,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: migrate
-          image: harbor.k3s.local/internal/platform-control@sha256:fa0cb0fe1e3524034c27e3dbfc87113c3e9bc6c29c7eca8a0fac981c216b93f2
+          image: harbor.k3s.local/internal/platform-control@sha256:e0cb1f4a74b32e27252e92b33c5d4aa4d6f88c3235c396e4833ca43b2b4cd585
           command: [/bin/sh, -ec]
           args:
             - |
@@ -83,7 +83,7 @@ data:
     with engine.begin() as db:
         db.execute(text("REVOKE CREATE ON SCHEMA public FROM PUBLIC"))
         db.execute(text("GRANT USAGE ON SCHEMA public TO platform_api, platform_worker"))
-        db.execute(text("GRANT SELECT, INSERT, UPDATE, DELETE ON tenants, memberships, projects, resources, operations TO platform_api"))
+        db.execute(text("GRANT SELECT, INSERT, UPDATE, DELETE ON tenants, memberships, projects, resources, operations, test_orders TO platform_api"))
         db.execute(text("GRANT SELECT, INSERT ON audit_events TO platform_api"))
         db.execute(text("GRANT SELECT ON alembic_version TO platform_api, platform_worker"))
         db.execute(text("GRANT SELECT ON tenants, resources, operations TO platform_worker"))
