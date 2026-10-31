@@ -2,6 +2,8 @@
 
 本目录为 GitOps 部署，业务源码位于同工作区 `platform-control/`。当前为内部可信用户的资源申请/规划版本，尚不创建真实租户工作负载、数据库、bucket 或发布应用。
 
+用户操作见 [使用手册](USER_GUIDE.md)。已完成真实 PKCE 双用户登录、项目创建、幂等、计划 worker、配额预留/释放、跨租户拒绝和 API Pod 替换后的持久化验收。临时测试账号和元数据已清理，成功操作审计保留。
+
 ## 访问
 
 - 平台：`https://platform.k3s.local:30443/`
@@ -34,6 +36,7 @@ ssh -N -L 127.0.0.1:30443:192.168.10.30:30443 edge@100.92.98.122
 - `platform-control`：公共 ConfigMap、迁移 Sync hook（wave 1）、API/worker（wave 2）和平台路由（wave 3）。
 - Authentik chart 挂载 `platform-authentik-blueprint`，公共客户端 `platform-console`，只开放 authorization_code；返回地址严格匹配平台 URL。API 要求 RS256、正确 issuer/audience、有效期和 platform-api scope。
 - 网关为现有 APISIX 新增 TLS NodePort `30443`，保留原 HTTP NodePort `30097`；平台与 Authentik 的 HTTP 路由跳转到 HTTPS。
+- APISIX Admin API 与 KIC 共用外部 Secret `apisix-admin-auth`（admin/viewer），已替换 chart 的公开默认密钥。因当前服务 SNAT，管理 ACL 允许节点与 Pod 地址段，并配有管理端口 NetworkPolicy。不要将 Secret 内容写入 Git 或日志。
 
 ## 一次性外部配置
 
@@ -51,6 +54,10 @@ ssh -N -L 127.0.0.1:30443:192.168.10.30:30443 edge@100.92.98.122
 迁移 Job 先执行 Alembic，再授予运行角色必要权限。API/worker 不持有迁移凭据、不挂载 Kubernetes token、没有 Kubernetes RBAC、非 root、只读根文件系统。数据保存在共享 PostgreSQL，不使用 API 本地 SQLite。
 
 CA 更新后应重新运行 bootstrap 同步公开信任束，并滚动重启 API/worker；无需重新生成数据库密码。不能删除 Secret 后盲目运行 bootstrap 重置已有角色密码。
+
+## 当前网络待整改
+
+已确认节点 PodCIDR 为 `10.42.0.0/24`，Calico 地址池为 `172.16.0.0/16`，APISIX 日志中的控制器来源因此表现为节点 `192.168.10.30`。本次未重启或改写 k3s 的集群地址段。真正开放租户代码执行之前，应统一配置并实测服务访问及跨租户 NetworkPolicy，不能只依赖当前的来源标签假设。
 
 ## 验证与回退
 
