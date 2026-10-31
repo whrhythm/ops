@@ -6,7 +6,8 @@
 - 登录使用 Authentik 的 `platform` 公共 OIDC 客户端及 PKCE，复用 issuer / subject；本地邮箱登录关闭。平台 API 仍独立验证令牌、成员和角色；仅在 LibreChat 登录不代表项目权限打通。
 - 安装前需在命名空间中创建 `librechat-secrets` 和 `librechat-ca`；可使用控制面仓库的 `scripts/bootstrap_librechat.py`。脚本复用已有密钥，不自动轮换。不要将 Secret 写入 Git。
 - MongoDB 与上传目录使用 Longhorn PVC。备份需覆盖 MongoDB、上传文件和 Secret，定期执行恢复演练。当前单节点不提供高可用。
-- 不启用 LibreChat 的 Meilisearch、RAG、Dify 或内置注册；它们不是本阶段的交付能力。
+- 不启用 LibreChat 的 Meilisearch、RAG、Dify 或本地密码注册；用户通过 Authentik 自助注册。
+- 仅供内网可信用户试用：目前没有配置注册邮箱验证，填写的邮箱不能用作已验证身份或找回密码；公开提供注册之前必须配置验证、限流及滥用防护。
 
 安装后应检查 Argo 同步、Pod、PVC、证书、实际 OIDC 登录与数据持久化。环境使用内部 CA，访问终端须信任该 CA；域名需解析到可访问 APISIX 30443 的节点地址。
 
