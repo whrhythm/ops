@@ -1,0 +1,119 @@
+# kubectl port-forward targets the Kata host-side network namespace, where
+# the guest's loopback listener is unavailable. This unprivileged runc pod
+# forwards TCP to the Kata service, including WebSocket traffic.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openhands-local-proxy
+  namespace: openhands
+data:
+  proxy.py: |
+    import asyncio
+
+    async def copy(reader, writer):
+        try:
+            while data := await reader.read(65536):
+                writer.write(data)
+                await writer.drain()
+        except (ConnectionError, OSError):
+            pass
+        finally:
+            try:
+                if writer.can_write_eof():
+                    writer.write_eof()
+            except (ConnectionError, OSError):
+                pass
+
+    async def handle(client_reader, client_writer):
+        upstream_writer = None
+        try:
+            upstream_reader, upstream_writer = await asyncio.wait_for(
+                asyncio.open_connection("openhands-agent-canvas.openhands.svc.cluster.local", 8000), 10
+            )
+            await asyncio.gather(copy(client_reader, upstream_writer), copy(upstream_reader, client_writer))
+        except (ConnectionError, OSError, asyncio.TimeoutError):
+            pass
+        finally:
+            client_writer.close()
+            if upstream_writer is not None:
+                upstream_writer.close()
+
+    async def main():
+        server = await asyncio.start_server(handle, "0.0.0.0", 8080)
+        async with server:
+            await server.serve_forever()
+
+    asyncio.run(main())
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openhands-local-proxy
+  namespace: openhands
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openhands-local-proxy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openhands-local-proxy
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: proxy
+          # Reuse the Python image already cached on this single-node cluster.
+          image: harbor.k3s.local/internal/open-webui:0.6.43
+          command: ["/usr/local/bin/python", "-u", "/proxy/proxy.py"]
+          ports:
+            - name: tcp
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: tcp
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: tcp
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: proxy
+              mountPath: /proxy
+              readOnly: true
+      volumes:
+        - name: proxy
+          configMap:
+            name: openhands-local-proxy
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openhands-local-proxy
+  namespace: openhands
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: openhands-local-proxy
+  ports:
+    - name: tcp
+      port: 8080
+      targetPort: tcp

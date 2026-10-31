@@ -1,6 +1,5 @@
-# This single-project proof of concept is reachable only from the node (for
-# kubelet probes and kubectl port-forward). Future callers require a reviewed
-# allow rule and application-layer authentication.
+# Allow kubelet probes and the dedicated port-forward proxy. Future callers
+# require a reviewed allow rule and application-layer authentication.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -13,7 +12,22 @@ spec:
     - from:
         - ipBlock:
             cidr: 192.168.10.30/32
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: openhands-local-proxy
+      ports:
+        - protocol: TCP
+          port: 8000
   egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: agent-canvas
+              app.kubernetes.io/instance: openhands
+      ports:
+        - protocol: TCP
+          port: 8000
     - to:
         - namespaceSelector:
             matchLabels:
