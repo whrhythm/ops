@@ -35,6 +35,17 @@ data:
   NODE_EXTRA_CA_CERTS: /etc/librechat-ca/internal-ca.crt
   SEARCH: "false"
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: librechat-settings
+  namespace: librechat
+data:
+  librechat.yaml: |
+    version: 1.3.18
+    registration:
+      socialLogins: ["openid"]
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -93,6 +104,10 @@ spec:
             - name: ca
               mountPath: /etc/librechat-ca
               readOnly: true
+            - name: settings
+              mountPath: /app/librechat.yaml
+              subPath: librechat.yaml
+              readOnly: true
             - name: files
               mountPath: /app/uploads
               subPath: uploads
@@ -103,6 +118,9 @@ spec:
         - name: ca
           configMap:
             name: librechat-ca
+        - name: settings
+          configMap:
+            name: librechat-settings
         - name: files
           persistentVolumeClaim:
             claimName: librechat-files
