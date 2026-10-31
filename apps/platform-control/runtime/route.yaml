@@ -1,0 +1,48 @@
+apiVersion: apisix.apache.org/v2
+kind: ApisixRoute
+metadata:
+  name: platform-api
+  namespace: platform-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  ingressClassName: apisix
+  http:
+    - name: platform
+      match:
+        hosts:
+          - platform.k3s.local
+        paths:
+          - /*
+      backends:
+        - serviceName: platform-api
+          servicePort: 8088
+      plugins:
+        - name: gzip
+          enable: true
+          config:
+            types:
+              - text/javascript
+              - application/javascript
+              - text/css
+              - application/json
+              - image/svg+xml
+        - name: redirect
+          enable: true
+          config:
+            http_to_https: true
+---
+apiVersion: apisix.apache.org/v2
+kind: ApisixTls
+metadata:
+  name: platform-web
+  namespace: platform-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  ingressClassName: apisix
+  hosts:
+    - platform.k3s.local
+  secret:
+    name: platform-web-tls
+    namespace: platform-system

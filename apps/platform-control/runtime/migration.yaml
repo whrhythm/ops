@@ -1,0 +1,94 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: platform-migrate
+  namespace: platform-system
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 180
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: platform-migrate
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: harbor.k3s.local/internal/platform-control@sha256:fa0cb0fe1e3524034c27e3dbfc87113c3e9bc6c29c7eca8a0fac981c216b93f2
+          command: [/bin/sh, -ec]
+          args:
+            - |
+              alembic upgrade head
+              python /deploy/grants.py
+          envFrom:
+            - configMapRef:
+                name: platform-config
+            - secretRef:
+                name: platform-db-migrator
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: ca
+              mountPath: /etc/platform-ca
+              readOnly: true
+            - name: migration
+              mountPath: /deploy
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: ca
+          configMap:
+            name: platform-ca
+        - name: migration
+          configMap:
+            name: platform-migration
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-migration
+  namespace: platform-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+data:
+  grants.py: |
+    from sqlalchemy import create_engine, text
+    import os
+    engine = create_engine(os.environ["PLATFORM_DATABASE_URL"])
+    with engine.begin() as db:
+        db.execute(text("REVOKE CREATE ON SCHEMA public FROM PUBLIC"))
+        db.execute(text("GRANT USAGE ON SCHEMA public TO platform_api, platform_worker"))
+        db.execute(text("GRANT SELECT, INSERT, UPDATE, DELETE ON tenants, memberships, projects, resources, operations TO platform_api"))
+        db.execute(text("GRANT SELECT, INSERT ON audit_events TO platform_api"))
+        db.execute(text("GRANT SELECT ON alembic_version TO platform_api, platform_worker"))
+        db.execute(text("GRANT SELECT ON tenants, resources, operations TO platform_worker"))
+        db.execute(text("GRANT UPDATE (id) ON tenants TO platform_worker"))
+        db.execute(text("GRANT UPDATE (status) ON resources TO platform_worker"))
+        db.execute(text("GRANT UPDATE (status, plan) ON operations TO platform_worker"))
+        db.execute(text("GRANT INSERT ON audit_events TO platform_worker"))
+    print("Platform schema migrated; runtime database permissions granted")
