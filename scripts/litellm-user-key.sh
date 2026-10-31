@@ -34,16 +34,21 @@ done
 
 name="chat-$user"
 
-existing="$(curl -s -H "Authorization: Bearer $master" "http://127.0.0.1:$PORT/key/list" | python3 -c "
+# /key/list entries are token hashes only; /spend/keys (master) returns
+# full key objects including key_name and user_id.
+existing="$(curl -s -H "Authorization: Bearer $master" "http://127.0.0.1:$PORT/spend/keys" | python3 -c "
 import json, sys
 name, user = '$name', '$user'
 try:
     data = json.load(sys.stdin)
 except Exception:
     sys.exit(0)
-for k in data.get('keys', []):
+keys = data if isinstance(data, list) else data.get('keys', [])
+for k in keys:
+    if not isinstance(k, dict):
+        continue
     if k.get('key_name') == name or k.get('user_id') == user:
-        print('%s / expires_at=%s / max_budget=%s' % (k.get('key_name'), k.get('expires_at'), k.get('max_budget')))
+        print('%s / max_budget=%s' % (k.get('key_name'), k.get('max_budget')))
         break
 " || true)"
 
@@ -57,7 +62,7 @@ fi
 
 resp="$(curl -s -X POST -H "Authorization: Bearer $master" -H 'Content-Type: application/json' \
   "http://127.0.0.1:$PORT/key/generate" \
-  -d "{\"key\": \"$name\", \"user_id\": \"$user\", \"model_list\": [\"deepseek-v4-flash-v2\"], \"max_budget\": $budget, \"budget_duration\": \"monthly\"}")"
+  -d "{\"key_name\": \"$name\", \"user_id\": \"$user\", \"models\": [\"deepseek-v4-flash-v2\"], \"max_budget\": $budget, \"budget_duration\": \"monthly\"}")"
 
 key="$(printf '%s' "$resp" | python3 -c 'import json,sys
 try:

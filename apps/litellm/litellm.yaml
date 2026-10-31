@@ -11,6 +11,14 @@ data:
           model: openai/deepseek-v4-flash-v2
           api_base: https://api.siliconrouter.com/v1
           api_key: os.environ/SILICONROUTER_API_KEY
+        # deepseek-v4-flash-v2 is not in LiteLLM's cost map, so without
+        # explicit pricing spend stays 0 and per-key budgets never trigger.
+        # PLACEHOLDER: copied from LiteLLM's deepseek-v4-flash entry
+        # ($0.3/M in, $1.2/M out). Re-check against siliconrouter's
+        # actual invoice and update these rates when they differ.
+        model_info:
+          input_cost_per_token: 0.0000003
+          output_cost_per_token: 0.0000012
     litellm_settings:
       drop_params: true
       telemetry: false
