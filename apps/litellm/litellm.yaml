@@ -1,0 +1,153 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config
+  namespace: litellm
+data:
+  litellm_config.yaml: |
+    model_list:
+      - model_name: deepseek-v4-flash-v2
+        litellm_params:
+          model: openai/deepseek-v4-flash-v2
+          api_base: https://api.siliconrouter.com/v1
+          api_key: os.environ/SILICONROUTER_API_KEY
+    litellm_settings:
+      drop_params: true
+      telemetry: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm
+  namespace: litellm
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: litellm
+  template:
+    metadata:
+      labels:
+        app: litellm
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: litellm
+          # tag: v1.109.0-dev.2 — upstream: ghcr.io/berriai/litellm:v1.109.0-dev.2
+          # (cosign-verified against BerriAI's cosign.pub; docker-save ->
+          # regctl import into Harbor; Harbor digest pinned below)
+          image: harbor.k3s.local/internal/litellm@sha256:617ef791a11de1d37cff258f4630044077fedf3f53d33a4d2b4a53d180cefdb9
+          args: ["--config", "/app/litellm_config.yaml", "--port", "4000"]
+          ports:
+            - containerPort: 4000
+          envFrom:
+            - secretRef:
+                name: litellm-secrets
+          startupProbe:
+            httpGet: {path: /health/liveliness, port: 4000}
+            failureThreshold: 60
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: {path: /health/readiness, port: 4000}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health/liveliness, port: 4000}
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: config
+              mountPath: /app/litellm_config.yaml
+              subPath: litellm_config.yaml
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: litellm-config
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: litellm
+  namespace: litellm
+spec:
+  selector:
+    app: litellm
+  ports:
+    - port: 4000
+      targetPort: 4000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: litellm-app
+  namespace: litellm
+spec:
+  podSelector:
+    matchLabels: {app: litellm}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        # LibreChat sends the per-user virtual keys here.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: librechat
+        # Platform key-provisioning endpoint (phase 2) and the admin API.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: platform-system
+        # Single-node kubelet probes and temporary admin port-forward.
+        - ipBlock:
+            cidr: 192.168.10.30/32
+      ports:
+        - {protocol: TCP, port: 4000}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: postgres
+          podSelector:
+            matchLabels:
+              cnpg.io/cluster: postgres
+      ports:
+        - {protocol: TCP, port: 5432}
+    # Upstream model provider (api.siliconrouter.com). k8s NetworkPolicy
+    # cannot match FQDNs, so 443 is allowed to anywhere for now.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - {protocol: TCP, port: 443}

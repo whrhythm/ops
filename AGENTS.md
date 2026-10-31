@@ -26,7 +26,7 @@ Waves are set via the `argocd.argoproj.io/sync-wave` annotation on each `Applica
 - `-2` — `metallb-config` (IPAddressPool + L2Advertisement), `cert-manager-issuer` (self-signed ClusterIssuer), `capsule-tenant` (default Tenant), `cnpg` (operator), `agent-sandbox-crds` (vendored agent-sandbox CRDs) — each waits on the CRDs of the chart above
 - `-1` — `signoz` (UI Service takes a MetalLB IP), `apisix` (dataplane + built-in etcd), `otel-gateway` + `otel-agent` (standalone OpenTelemetry Collectors), `postgres` (CNPG Cluster + topology detector), `minio` (shared S3), `harbor-pki` (internal-CA-issued Harbor TLS/token certs), `agent-sandbox` (controller, needs its CRDs)
 - `0` — `apisix-kic` (needs the APISIX Admin API), `harbor` (needs postgres below it for its database)
-- `>= 1` — business apps (parent `apps`): `kubepilot` (wave 0), `aisix` (wave 1), `open-webui` (wave 1)
+- `>= 1` — business apps (parent `apps`): `kubepilot` (wave 0), `litellm` (wave 0), `aisix` (wave 1)
 
 ## Infrastructure components
 
@@ -74,7 +74,7 @@ Single-node k3s cluster (`edge`); all values for one node are set inline in each
 
 - `apps/minio/` — hand-written manifests (no chart): 1-replica StatefulSet on a 20Gi `longhorn` volume + ClusterIP Service `minio` (9000 S3 API, 9001 console; no LoadBalancer IP).
 - **Images**: the official MinIO community images are no longer pullable (quay.io returns 401 for every tag, `docker.io/minio/minio` no longer exists), and `minio/mc` is gone as well. Use the Bitnami build from the frozen `bitnamilegacy` repo via the Docker Hub mirror: `docker.1ms.run/bitnamilegacy/minio:2025.5.24-debian-12-r0` (upstream binary 2025-05-24, runs as uid 1001/gid 0, entrypoint builds `server --console-address :9001 --address :9000 /bitnami/minio/data`, so `MINIO_DATA_DIR`/port envs are the defaults and the volume mounts at `/bitnami/minio/data`). Root credentials come from the out-of-band Secret `minio-root` (keys `root-user`/`root-password`, injected as `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`): `kubectl -n minio create secret generic minio-root --from-literal=root-user=admin --from-literal=root-password=<password>`. Never commit the password (public repo).
-- Out-of-band prerequisites: namespaces `cnpg-system`, `postgres`, `minio`, `openwebui`, `sandbox-demo` are created manually (the repo does not create namespaces) and the Secret above, plus `openwebui-secrets` (ns `openwebui`, keys `openai-api-key`/`webui-secret-key`; LLM key copied from `kubepilot-llm`). Everything else is delivered by ArgoCD.
+- Out-of-band prerequisites: namespaces `cnpg-system`, `postgres`, `minio`, `sandbox-demo` are created manually (the repo does not create namespaces) and the Secret above. Everything else is delivered by ArgoCD. (Open WebUI was retired in favor of LibreChat; its `openwebui` namespace/Secret are pending manual cleanup, and its Harbor image `internal/open-webui:0.6.43` must NOT be deleted while `openhands-local-proxy` uses it as a Python runtime.)
 - Verified end-to-end with SigV4 against `svc/minio:9000` (create/put/get/delete bucket + object). Console: `kubectl -n minio port-forward svc/minio 9001:9001`.
 
 ## Harbor (internal registry)
@@ -114,12 +114,14 @@ Single-node k3s cluster (`edge`); all values for one node are set inline in each
 - Listeners: proxy `:3000`, admin `:3001` (`/livez` + `/readyz` live here — probes point at it; admin key via `${AISIX_ADMIN_KEY}`), prometheus `:9090`.
 - Secret: out-of-band `aisix-admin` in ns `aisix`, key `admin-key` (`kubectl create secret generic aisix-admin -n aisix --from-literal=admin-key=<key>`); injected as env `AISIX_ADMIN_KEY`.
 
-## Open WebUI
+## LiteLLM (in-cluster metering proxy)
 
-- `open-webui` (wave 1) — chart `https://helm.openwebui.com` chart `open-webui` `8.22.1` (app 0.6.43), ns `openwebui`. Values are **inline in `argocd/apps/open-webui.yaml`** (chart-repo source, same pattern as Harbor). Image `harbor.k3s.local/internal/open-webui:0.6.43` (upstream `ghcr.io/open-webui/open-webui:0.6.43`): pushed to Harbor on 2026-10-30 via export/import because ghcr.1ms.run was broken and a direct streaming push into Harbor died on the 5-min blob-upload TTL (see Image pulls).
-- LLM: the same OpenAI-compatible endpoint as kubepilot, `http://192.168.10.30:4000/v1` (model `glm-5.3-flash`). The chart's `openaiApiKey` must stay `""` — a non-empty value is inlined as a plain env var and this repo is public. The key is injected via `extraEnvVars` secretKeyRef from the out-of-band Secret `openwebui-secrets` in ns `openwebui` (keys `openai-api-key`, `webui-secret-key`). `WEBUI_SECRET_KEY` is pinned the same way so sessions/encrypted data survive PVC recreation.
-- Bundled `ollama`/`pipelines`/`tika` subcharts are disabled (external endpoint only); `websocket` is off (one replica). Storage: SQLite in the chart's 10Gi `longhorn` PVC (StatefulSet `open-webui`).
-- Access: Service LoadBalancer pinned to MetalLB `192.168.10.52`, port 80, plain http (LAN). First visitor becomes the admin via the signup page (signup stays open).
+- `litellm` (wave 0) — hand-written manifests in `apps/litellm/`, ns `litellm`. The open-source LiteLLM proxy for **per-user virtual-key metering** in front of LibreChat (replaces the retired Open WebUI as the chat front end). Image `harbor.k3s.local/internal/litellm:v1.109.0-dev.2` (upstream `ghcr.io/berriai/litellm:v1.109.0-dev.2`, cosign-verified against BerriAI's `cosign.pub`, two-step export/import into Harbor per the blob-TTL note). It is **not** the host-level LiteLLM running on the node at `192.168.10.30:4000` — that unmanaged instance still serves kubepilot and openhands and is not touched by this repo.
+- Database: role/database `litellm` on the shared CNPG cluster (created by `scripts/litellm-prereqs.sh`, which also enables the `citext` extension LiteLLM's prisma schema requires). Secret `litellm-secrets` (ns `litellm`): `LITELLM_MASTER_KEY` (random), `DATABASE_URL` (random PG password), `SILICONROUTER_API_KEY` (the upstream provider key; never commit).
+- Config (ConfigMap, `litellm_config.yaml`): one model `deepseek-v4-flash-v2` via the OpenAI-compatible `https://api.siliconrouter.com/v1` (`api_key: os.environ/SILICONROUTER_API_KEY`). Master key and `DATABASE_URL` come from env (secret), not the config file.
+- Service: ClusterIP `litellm:4000` only — **no public entry**. Admin UI: `kubectl -n litellm port-forward svc/litellm 4000` then `/ui` (master-key login). Per-key spend: `GET /spend/keys` with the master key.
+- Per-user billing: one virtual key per platform user, `model_list`-restricted to `deepseek-v4-flash-v2`, `max_budget` monthly (default $5). Phase 1: `scripts/litellm-user-key.sh <user> [budget]` (admin-run, prints the token once). Phase 2 (platform-control): `GET /v1/me/litellm-key` auto-provisions on first access and the platform console shows the key; the master key is also in ns `platform-system` Secret `platform-litellm-admin` (created by the same prereq script).
+- LibreChat: `librechat.yaml` declares a `LiteLLM` custom endpoint (`http://litellm.litellm.svc.cluster.local:4000/v1`, `models.fetch: true`, no server-side key) so each user pastes their own virtual key in Settings → API Keys; the model list is fetched with the user's key. `librechat-app` egress allows the litellm pod:4000 (the old `192.168.10.30:4000` rule was removed).
 
 ## Adding a new app
 

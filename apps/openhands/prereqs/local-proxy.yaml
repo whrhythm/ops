@@ -70,6 +70,8 @@ spec:
       containers:
         - name: proxy
           # Reuse the Python image already cached on this single-node cluster.
+          # The open-webui app is gone, but do NOT delete this image from
+          # Harbor while this proxy runs — it is used here as a Python runtime.
           image: harbor.k3s.local/internal/open-webui:0.6.43
           command: ["/usr/local/bin/python", "-u", "/proxy/proxy.py"]
           ports:
