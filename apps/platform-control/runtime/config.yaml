@@ -7,6 +7,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "0"
 data:
   PLATFORM_PUBLIC_ORIGIN: https://platform.k3s.local:30443
+  PLATFORM_ADDITIONAL_PUBLIC_ORIGIN: https://chat.k3s.local:30443
   PLATFORM_OIDC_ISSUER: https://authentik.k3s.local:30443/application/o/platform/
   # JWKS contents are independent of the public port. Resolve this hostname to
   # the internal LB address via hostAliases and validate its real certificate.

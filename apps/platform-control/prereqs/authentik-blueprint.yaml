@@ -111,6 +111,9 @@ data:
               url: https://chat.k3s.local:30443/oauth/openid/callback
               redirect_uri_type: authorization
             - matching_mode: strict
+              url: https://chat.k3s.local:30443/codechat
+              redirect_uri_type: authorization
+            - matching_mode: strict
               url: https://platform.k3s.local:30443/
               redirect_uri_type: logout
           property_mappings:
