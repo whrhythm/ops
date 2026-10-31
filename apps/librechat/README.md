@@ -4,7 +4,7 @@
 
 - Argo CD 应用：`librechat`；域名：`https://chat.k3s.local:30443/`。
 - 登录使用 Authentik 的 `platform` 公共 OIDC 客户端及 PKCE，复用 issuer / subject；本地邮箱登录关闭。平台 API 仍独立验证令牌、成员和角色；仅在 LibreChat 登录不代表项目权限打通。
-- 安装前需在命名空间中创建 `librechat-secrets` 和 `librechat-ca`；可使用控制面仓库的 `scripts/bootstrap_librechat.py`。脚本复用已有密钥，不自动轮换。不要将 Secret 写入 Git。
+- 安装前需在命名空间中创建 `librechat-secrets`、`librechat-ca` 和 `librechat-codechat-provisioning`；前两项可使用控制面仓库的 `scripts/bootstrap_librechat.py`，自动开通凭据使用 `scripts/bootstrap_model_credentials.py` 创建。脚本复用已有密钥，不自动轮换。不要将 Secret 写入 Git。
 - MongoDB 与上传目录使用 Longhorn PVC。备份需覆盖 MongoDB、上传文件和 Secret，定期执行恢复演练。当前单节点不提供高可用。
 - 不启用 LibreChat 的 Meilisearch、RAG、Dify 或本地密码注册；用户通过 Authentik 自助注册。
 - 仅供内网可信用户试用：目前没有配置注册邮箱验证，填写的邮箱不能用作已验证身份或找回密码；公开提供注册之前必须配置验证、限流及滥用防护。
@@ -16,3 +16,5 @@
 同日新增的内网自助注册已使用随机临时账号实际验证：填写资料后可登录 LibreChat，账号角色为 `USER`；验收用户和会话已清理。邮箱验证及公网防滥用尚未实现。
 
 访问工作站需将 `chat.k3s.local` 与 `authentik.k3s.local` 解析到 `192.168.10.30`，并信任平台内部 CA；两个入口均使用端口 `30443`。管理员应通过现有平台手册取得可信 CA，勿将浏览器忽略证书错误作为正式配置。
+
+2026-10-31：用户通过 Authentik 注册或重新登录时，控制面基于验证后的身份幂等创建 LiteLLM 用户和专属密钥，并设置一次性 1 美元测试预算。LibreChat 服务端加密保存密钥，用户无需手工提供；已有会话需退出并重新登录。管理员需一并备份控制面数据库、LibreChat 数据及相关加密 Secret。模型单价尚为占位值，不可用于财务结算；注册邮箱验证、公网反滥用、OpenHands 的用户计量和管理界面中的停用/轮换仍未完成。

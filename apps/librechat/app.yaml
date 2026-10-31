@@ -32,6 +32,7 @@ data:
   OPENID_USE_PKCE: "true"
   OPENID_CALLBACK_URL: /oauth/openid/callback
   OPENID_BUTTON_LABEL: Authentik
+  CODECHAT_PROVISION_URL: https://platform.k3s.local:30443/internal/v1/litellm/key
   NODE_EXTRA_CA_CERTS: /etc/librechat-ca/internal-ca.crt
   SEARCH: "false"
 ---
@@ -45,9 +46,8 @@ data:
     version: 1.3.18
     registration:
       socialLogins: ["openid"]
-    # apiKey: user_provided makes LibreChat prompt each user for their own
-    # LiteLLM virtual key (Settings -> API Keys), i.e. per-user billing.
-    # The model list is fetched from the endpoint with the user's key.
+    # LibreChat's encrypted per-user key mechanism is populated by the
+    # CodeChat login callback; users cannot supply or replace this key.
     endpoints:
       custom:
         - name: LiteLLM
@@ -79,7 +79,7 @@ spec:
       automountServiceAccountToken: false
       hostAliases:
         - ip: 192.168.10.30
-          hostnames: [authentik.k3s.local]
+          hostnames: [authentik.k3s.local, platform.k3s.local]
       securityContext:
         runAsUser: 1000
         runAsGroup: 1000
@@ -88,7 +88,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/librechat@sha256:d2f43ecaec82d1ea0a80587e935abd3697b8f143f30087db0d2b8503ca1cfdd9
+          image: harbor.k3s.local/internal/codechat-librechat@sha256:a7cf10795ab91999079f48b9c4a33db6320d6f93938df117c261e4a1a2452f53
           ports:
             - containerPort: 3080
           envFrom:
@@ -96,6 +96,8 @@ spec:
                 name: librechat-config
             - secretRef:
                 name: librechat-secrets
+            - secretRef:
+                name: librechat-codechat-provisioning
           startupProbe:
             httpGet: {path: /health, port: 3080}
             failureThreshold: 60
