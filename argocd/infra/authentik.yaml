@@ -48,6 +48,9 @@ spec:
     targetRevision: 2026.8.5
     helm:
       values: |
+        blueprints:
+          configMaps:
+            - platform-authentik-blueprint
         global:
           image:
             # upstream: ghcr.io/goauthentik/server (server and worker share

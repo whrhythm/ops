@@ -1,0 +1,17 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: platform-web
+  namespace: platform-system
+spec:
+  secretName: platform-web-tls
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  dnsNames:
+    - platform.k3s.local
+  issuerRef:
+    name: internal-ca
+    kind: ClusterIssuer

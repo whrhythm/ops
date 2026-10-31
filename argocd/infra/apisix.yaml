@@ -15,6 +15,19 @@ spec:
     targetRevision: apisix-ingress-controller-1.4.1
     helm:
       values: |
+        # Public HTTPS entry point reachable through the node's LAN/Tailscale IP.
+        # Preserve the existing HTTP NodePort when adding the TLS listener.
+        service:
+          http:
+            nodePort: 30097
+          tls:
+            nodePort: 30443
+        apisix:
+          ssl:
+            enabled: true
+          pluginAttrs:
+            redirect:
+              https_port: 30443
         etcd:
           # Built-in etcd is for dev/test only; single node runs one replica.
           replicaCount: 1

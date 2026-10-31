@@ -32,6 +32,11 @@ spec:
       cpu: "1"
       memory: 1Gi
   postgresql:
+    # These new platform identities may connect only to their own control DB.
+    # Existing application roles and operator-local rules are unaffected.
+    pg_hba:
+      - hostssl platform_control platform_migrator,platform_api,platform_worker all scram-sha-256
+      - host all platform_migrator,platform_api,platform_worker all reject
     parameters:
       max_connections: "200"
       shared_buffers: 256MB

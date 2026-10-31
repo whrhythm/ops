@@ -1,0 +1,62 @@
+# Public browser client only. No password, client secret or signing key material.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-authentik-blueprint
+  namespace: authentik
+data:
+  platform.yaml: |
+    version: 1
+    metadata:
+      name: Platform control plane OIDC
+    entries:
+      - model: authentik_core.group
+        identifiers:
+          name: platform-admins
+        attrs:
+          is_superuser: false
+      - model: authentik_providers_oauth2.scopemapping
+        id: platform-scope
+        identifiers:
+          name: Platform API access
+        attrs:
+          scope_name: platform-api
+          description: Access your projects and resource requests
+          expression: return {}
+      - model: authentik_providers_oauth2.oauth2provider
+        id: platform-provider
+        identifiers:
+          name: Platform console
+        attrs:
+          client_id: platform-console
+          client_type: public
+          grant_types:
+            - authorization_code
+          authentication_flow: !Find [authentik_flows.flow, [slug, default-authentication-flow]]
+          authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-explicit-consent]]
+          invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+          signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+          issuer_mode: per_provider
+          sub_mode: hashed_user_id
+          access_code_validity: minutes=1
+          access_token_validity: minutes=15
+          include_claims_in_id_token: true
+          redirect_uris:
+            - matching_mode: strict
+              url: https://platform.k3s.local:30443/
+              redirect_uri_type: authorization
+            - matching_mode: strict
+              url: https://platform.k3s.local:30443/
+              redirect_uri_type: logout
+          property_mappings:
+            - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-openid]]
+            - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-email]]
+            - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-profile]]
+            - !KeyOf platform-scope
+      - model: authentik_core.application
+        identifiers:
+          slug: platform
+        attrs:
+          name: 开发空间
+          provider: !KeyOf platform-provider
+          meta_launch_url: https://platform.k3s.local:30443/

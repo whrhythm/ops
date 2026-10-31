@@ -1,0 +1,66 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: platform-control
+  namespace: platform-system
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: apisix
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: apisix
+      ports:
+        - protocol: TCP
+          port: 8088
+    # Single-node kubelet probes and temporary admin port-forward.
+    - from:
+        - ipBlock:
+            cidr: 192.168.10.30/32
+      ports:
+        - protocol: TCP
+          port: 8088
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: postgres
+          podSelector:
+            matchLabels:
+              cnpg.io/cluster: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: authentik
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: server
+      ports:
+        - protocol: TCP
+          port: 9443
+    # DNS alias below resolves to Authentik's existing MetalLB address.
+    - to:
+        - ipBlock:
+            cidr: 192.168.10.53/32
+      ports:
+        - protocol: TCP
+          port: 443

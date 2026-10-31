@@ -1,0 +1,44 @@
+apiVersion: apisix.apache.org/v2
+kind: ApisixRoute
+metadata:
+  name: platform-authentik
+  namespace: authentik
+spec:
+  ingressClassName: apisix
+  http:
+    - name: authentik
+      match:
+        hosts:
+          - authentik.k3s.local
+        paths:
+          - /*
+      backends:
+        - serviceName: authentik-server
+          servicePort: 80
+      plugins:
+        - name: redirect
+          enable: true
+          config:
+            http_to_https: true
+        - name: proxy-rewrite
+          enable: true
+          config:
+            host: authentik.k3s.local:30443
+            headers:
+              set:
+                X-Forwarded-Host: authentik.k3s.local:30443
+                X-Forwarded-Port: "30443"
+                X-Forwarded-Proto: https
+---
+apiVersion: apisix.apache.org/v2
+kind: ApisixTls
+metadata:
+  name: platform-authentik
+  namespace: authentik
+spec:
+  ingressClassName: apisix
+  hosts:
+    - authentik.k3s.local
+  secret:
+    name: authentik-tls
+    namespace: authentik
