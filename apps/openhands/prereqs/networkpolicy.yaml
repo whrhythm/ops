@@ -1,0 +1,35 @@
+# This single-project proof of concept is reachable only from the node (for
+# kubelet probes and kubectl port-forward). Future callers require a reviewed
+# allow rule and application-layer authentication.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openhands-restricted
+  namespace: openhands
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 192.168.10.30/32
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Existing OpenAI-compatible model endpoint; reassess when the LAN changes.
+    - to:
+        - ipBlock:
+            cidr: 192.168.10.30/32
+      ports:
+        - protocol: TCP
+          port: 4000

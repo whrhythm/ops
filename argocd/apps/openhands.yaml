@@ -1,0 +1,25 @@
+# Single-user OpenHands Agent Canvas for integration testing. It is not a
+# multi-tenant service and is intentionally not exposed outside the cluster.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: openhands
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/whrhythm/ops.git
+    targetRevision: main
+    path: apps/openhands/chart
+    helm:
+      valueFiles:
+        - /apps/openhands/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openhands
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
