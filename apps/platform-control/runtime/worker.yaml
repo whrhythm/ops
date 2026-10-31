@@ -25,7 +25,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: worker
-          image: harbor.k3s.local/internal/platform-control@sha256:a23eae14d553efb41143e5665fabd307075489d867a2c2ff161291645ffe2d5f
+          image: harbor.k3s.local/internal/platform-control@sha256:06013789c5e961809dfed24fdc150f0889c17ffdc59c2d62f9d9829db3e5003a
           command: [python, -m, control_plane.worker]
           envFrom:
             - configMapRef:

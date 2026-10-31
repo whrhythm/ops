@@ -25,7 +25,7 @@ ssh -N -L 127.0.0.1:30443:192.168.10.30:30443 edge@100.92.98.122
 ## 镜像
 
 - 标签：`harbor.k3s.local/internal/platform-control:0.1.0-20261031.1`
-- 部署固定 digest：`sha256:a23eae14d553efb41143e5665fabd307075489d867a2c2ff161291645ffe2d5f`；模拟支付默认关闭。
+- 部署固定 digest：`sha256:06013789c5e961809dfed24fdc150f0889c17ffdc59c2d62f9d9829db3e5003a`；模拟支付默认关闭。
 - 镜像包含已编译 React 界面和 Python API/计划 worker，运行时三个进程分别用于迁移、API、worker。
 - 本地完整镜像构建和 Python 3.12 镜像内测试已通过；完整归档跨 VPN 上传持续超时，因此改用 SHA256 校验过的小构建包，在 edge 用同一源码、前端产物和带哈希的锁定依赖重建并推送 Harbor。完整本地归档未传完，不冒充完成。
 - 目标主机发布目录：`/home/edge/platform-releases/20261031/`，构建日志 `build.log`，镜像发布结果 `published.json`。临时 Harbor 登录目录会在推送结束自动删除。
