@@ -1,0 +1,46 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: librechat-web
+  namespace: librechat
+spec:
+  secretName: librechat-web-tls
+  duration: 8760h
+  renewBefore: 720h
+  dnsNames: [chat.k3s.local]
+  issuerRef:
+    name: internal-ca
+    kind: ClusterIssuer
+---
+apiVersion: apisix.apache.org/v2
+kind: ApisixRoute
+metadata:
+  name: librechat
+  namespace: librechat
+spec:
+  ingressClassName: apisix
+  http:
+    - name: chat
+      match:
+        hosts: [chat.k3s.local]
+        paths: [/*]
+      backends:
+        - serviceName: librechat
+          servicePort: 3080
+      plugins:
+        - name: redirect
+          enable: true
+          config:
+            http_to_https: true
+---
+apiVersion: apisix.apache.org/v2
+kind: ApisixTls
+metadata:
+  name: librechat
+  namespace: librechat
+spec:
+  ingressClassName: apisix
+  hosts: [chat.k3s.local]
+  secret:
+    name: librechat-web-tls
+    namespace: librechat

@@ -1,0 +1,120 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: librechat-files
+  namespace: librechat
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: librechat-config
+  namespace: librechat
+data:
+  HOST: 0.0.0.0
+  PORT: "3080"
+  DOMAIN_CLIENT: https://chat.k3s.local:30443
+  DOMAIN_SERVER: https://chat.k3s.local:30443
+  TRUST_PROXY: "1"
+  ALLOW_EMAIL_LOGIN: "false"
+  ALLOW_REGISTRATION: "false"
+  ALLOW_SOCIAL_LOGIN: "true"
+  OPENID_CLIENT_ID: platform-console
+  OPENID_ISSUER: https://authentik.k3s.local:30443/application/o/platform/
+  OPENID_SCOPE: openid profile email platform-api
+  OPENID_USE_PKCE: "true"
+  OPENID_CALLBACK_URL: /oauth/openid/callback
+  OPENID_BUTTON_LABEL: Authentik
+  NODE_EXTRA_CA_CERTS: /etc/librechat-ca/internal-ca.crt
+  SEARCH: "false"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: librechat
+  namespace: librechat
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: librechat
+  template:
+    metadata:
+      labels:
+        app: librechat
+    spec:
+      automountServiceAccountToken: false
+      hostAliases:
+        - ip: 192.168.10.30
+          hostnames: [authentik.k3s.local]
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: librechat
+          image: harbor.k3s.local/internal/librechat:v0.8.9-rc1
+          ports:
+            - containerPort: 3080
+          envFrom:
+            - configMapRef:
+                name: librechat-config
+            - secretRef:
+                name: librechat-secrets
+          startupProbe:
+            httpGet: {path: /health, port: 3080}
+            failureThreshold: 60
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: {path: /readyz, port: 3080}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: 3080}
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 200m, memory: 512Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: ca
+              mountPath: /etc/librechat-ca
+              readOnly: true
+            - name: files
+              mountPath: /app/uploads
+              subPath: uploads
+            - name: files
+              mountPath: /app/client/public/images
+              subPath: images
+      volumes:
+        - name: ca
+          configMap:
+            name: librechat-ca
+        - name: files
+          persistentVolumeClaim:
+            claimName: librechat-files
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: librechat
+  namespace: librechat
+spec:
+  selector:
+    app: librechat
+  ports:
+    - port: 3080
+      targetPort: 3080

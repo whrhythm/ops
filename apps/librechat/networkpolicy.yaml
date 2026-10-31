@@ -1,0 +1,62 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: librechat-app
+  namespace: librechat
+spec:
+  podSelector:
+    matchLabels: {app: librechat}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: apisix
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: apisix
+        - ipBlock:
+            cidr: 192.168.10.30/32
+      ports:
+        - {protocol: TCP, port: 3080}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {app: librechat-mongo}
+      ports:
+        - {protocol: TCP, port: 27017}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - ipBlock:
+            cidr: 192.168.10.30/32
+      ports:
+        - {protocol: TCP, port: 30443}
+        - {protocol: TCP, port: 4000}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: librechat-mongo
+  namespace: librechat
+spec:
+  podSelector:
+    matchLabels: {app: librechat-mongo}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app: librechat}
+        - ipBlock:
+            cidr: 192.168.10.30/32
+      ports:
+        - {protocol: TCP, port: 27017}
+  egress: []
