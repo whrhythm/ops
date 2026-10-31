@@ -58,3 +58,10 @@ flowchart LR
 ## 验收门槛
 
 在真实集群中使用两个临时用户验证：独立 Pod、卷和凭据；写入彼此不同文件；尝试跨用户读取卷、文件、Agent API 和日志均失败；测试硬盘写满、临时存储限制和节点容量不足；暂停后卷与资料保留、恢复仍为原文件；只删除 A 的项目与环境后 B 完整可用；测试网络中断、工作器重启和重复删除，实际回收后才释放额度。核验备份恢复及 Longhorn 快照/备份保留后，再接入普通用户入口。
+
+## 2026-10-31 集群技术验证
+
+- 使用两组一次性 namespace、Agent Sandbox、Kata Pod 和各 1 GiB Longhorn PVC，验证不同文件、双向默认拒绝网络策略、暂停并保留卷、恢复原文件以及另一用户数据不受影响。测试 namespace、PV 和对应 Longhorn 卷均已确认删除。此次使用 BusyBox 测试进程；结果只证明所测存储、沙箱和网络行为，不证明文件 API、鉴权或实际业务多租户已完成。
+- 当前 Agent Canvas 1.34.0 镜像内 `openhands-sdk`、`openhands-agent-server` 和 `openhands-workspace` 均为 1.58.1。临时测试通过覆盖镜像入口仅运行 Agent Server，使用另一个容器里的同版本 SDK 作为共享侧客户端：受保护会话接口无凭据被拒绝，`RemoteWorkspace` 可凭临时凭据远程执行命令并写入 Kata 挂载卷。临时 namespace、PV 和 Longhorn 卷已清理。这里复用了现有 Canvas 镜像进行兼容试验，并非已选定生产镜像或完整用户实例。
+- 可复现脚本：`platform-control/scripts/sandbox_storage_acceptance.py`、`platform-control/scripts/agent_server_acceptance.py`。需要显式 `KUBECONFIG` 和 `PLATFORM_KUBE_SERVER`，脚本只创建有唯一测试标记的临时资源并在完成后清理；不得在缺少备份或空间不足的集群盲目运行。
+- 尚未验证完整的 LibreChat → 项目授权 → Agent SDK/Server → LiteLLM 模型任务与实时事件流，也未验证不同用户对 Agent API/凭据的交叉攻击、用户恶意代码下的凭据隔离、Kata 子进程逃逸、磁盘写满、备份恢复或用户真实删除流程。Agent Sandbox 与 OpenHands 官方集成组件的版本配套、预热池动态绑定用户卷和生产轻量镜像也仍需验证。
