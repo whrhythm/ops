@@ -20,6 +20,15 @@ spec:
         # (created by the apisix chart in the same namespace).
         gatewayProxy:
           createDefault: true
+          provider:
+            controlPlane:
+              auth:
+                adminKey:
+                  value: ""
+                  valueFrom:
+                    secretKeyRef:
+                      name: apisix-admin-auth
+                      key: admin
         apisix:
           adminService:
             namespace: apisix

@@ -24,10 +24,15 @@ spec:
             nodePort: 30443
         apisix:
           admin:
+            credentials:
+              secretName: apisix-admin-auth
             allow:
               ipList:
                 - 127.0.0.0/8
                 - 172.16.0.0/16
+                # Current kube-proxy SNAT presents service callers as the node.
+                # A private Secret replaces the chart's public default key.
+                - 192.168.10.30/32
           ssl:
             enabled: true
           pluginAttrs:
