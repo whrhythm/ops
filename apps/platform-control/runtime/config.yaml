@@ -26,7 +26,7 @@ data:
   PLATFORM_WORKSPACE_AGENT_IMAGE: harbor.k3s.local/internal/platform-control@sha256:658cda1ff571f6ee005eca8cd1e5654075727f3181f1df55c2e9cd6975fad131
   PLATFORM_WORKSPACE_AGENT_MAX_ITERATIONS: "40"
   PLATFORM_WORKSPACE_AGENT_MAX_SECONDS: "180"
-  PLATFORM_WORKSPACE_SERVICE_IMAGE: harbor.k3s.local/internal/platform-control@sha256:4a217388cd13d1080bf3a46a5e2d0d92e44a6b33a11a1a7299b64c7b6d0133b3
+  PLATFORM_WORKSPACE_SERVICE_IMAGE: harbor.k3s.local/internal/platform-control@sha256:8e5cd9feecc968b74018e761672437d04b6c0a40f47171e6890721394ecd2958
   PLATFORM_LITELLM_URL: http://litellm.litellm.svc.cluster.local:4000
   PLATFORM_LITELLM_MODELS: deepseek-v4-flash-v2
   SSL_CERT_FILE: /etc/platform-ca/internal-ca.crt
