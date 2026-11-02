@@ -4,7 +4,7 @@
 
 推荐共享 LibreChat、控制面和 OpenHands SDK 任务编排服务，按需为每位用户分配隔离执行环境和 Longhorn 持久卷，不为每个用户部署完整的 Agent Canvas 产品。隔离环境内部可能需要运行轻量 Agent Server；这与给用户部署完整 OpenHands UI、服务栈不同。多个项目可以位于同一用户的磁盘中，项目文件、Agent 状态、测试文件和构建工作目录都计入该用户的存储额度。用户用完可以暂停计算并保留磁盘；需要彻底删除时，按明确确认和保留策略回收资源。
 
-这是目标设计，**当前尚未开通自动创建、访问、暂停或删除**。现有 `openhands/openhands-agent-canvas` 是单用户验证实例，不能用它承载多个用户。控制面已有资源计划只生成规划，不会创建实际工作环境。
+这是目标设计，**当前尚未开通自动创建、访问、暂停或删除**。现有 `openhands/openhands-agent-canvas` 是单用户验证实例，不能用它承载多个用户。控制面的用户环境入口已部署，但只创建计划记录，不创建实际沙箱、卷或凭据。
 
 ## 隔离单位
 
@@ -31,7 +31,7 @@ flowchart LR
 
 每人一卷是逻辑磁盘隔离，Longhorn 仍共享节点物理磁盘，不等于每人独享一块物理硬盘或独享独立故障域。当前单节点也不具备节点高可用。PVC 以容量限制文件系统；实际物理占用还受副本、快照、备份、容器临时层和日志影响，必须同时监控 Longhorn 和节点剩余容量。工作卷、Agent 本地状态和临时项目资料共计入该卷配额；Pod 临时层、日志和未来外部数据库、对象存储另行设置限制和统计，不能仅凭 PVC 配额宣称覆盖所有空间。
 
-初版采用已有工作空间默认值：每用户 5 GiB（可由管理员调整），明确这是初始值而非承诺的永久套餐；节点容量不足时拒绝或排队，不能超配后假称可用。分配是按需发生，普通注册不会立刻启动一台实例。部署前须核对 Longhorn 实际可用容量、默认副本数和安全余量。
+目前用户环境计划的默认值为每用户 2 GiB，可通过服务端配置调整；尚未实现管理员界面中的调整操作。该值不是承诺的永久套餐。真实资源开通前必须实现容量核对，节点容量不足时拒绝或排队。注册不会立刻启动沙箱。部署前须核对 Longhorn 实际可用容量、默认副本数和安全余量。
 
 ## 用户、项目与访问
 
@@ -65,3 +65,11 @@ flowchart LR
 - 当前 Agent Canvas 1.34.0 镜像内 `openhands-sdk`、`openhands-agent-server` 和 `openhands-workspace` 均为 1.58.1。临时测试通过覆盖镜像入口仅运行 Agent Server，使用另一个容器里的同版本 SDK 作为共享侧客户端：受保护会话接口无凭据被拒绝，`RemoteWorkspace` 可凭临时凭据远程执行命令并写入 Kata 挂载卷。临时 namespace、PV 和 Longhorn 卷已清理。这里复用了现有 Canvas 镜像进行兼容试验，并非已选定生产镜像或完整用户实例。
 - 可复现脚本：`platform-control/scripts/sandbox_storage_acceptance.py`、`platform-control/scripts/agent_server_acceptance.py`。需要显式 `KUBECONFIG` 和 `PLATFORM_KUBE_SERVER`，脚本只创建有唯一测试标记的临时资源并在完成后清理；不得在缺少备份或空间不足的集群盲目运行。
 - 尚未验证完整的 LibreChat → 项目授权 → Agent SDK/Server → LiteLLM 模型任务与实时事件流，也未验证不同用户对 Agent API/凭据的交叉攻击、用户恶意代码下的凭据隔离、Kata 子进程逃逸、磁盘写满、备份恢复或用户真实删除流程。Agent Sandbox 与 OpenHands 官方集成组件的版本配套、预热池动态绑定用户卷和生产轻量镜像也仍需验证。
+
+## 2026-11-02 回收验证
+
+使用两个临时 Kata 沙箱和 Longhorn 卷，先停止并删除测试用户 A 的沙箱与卷，确认其 PV 和 Longhorn 卷实际回收，再验证测试用户 B 的沙箱、卷和文件仍然可用。测试脚本为 `scripts/sandbox_teardown_acceptance.py`；测试创建的资源均以唯一标记隔离，测试结束后清理。该验证不等于平台已经实现用户删除功能，也不覆盖备份和快照的保留或销毁。
+
+验收脚本优先使用 `KUBECTL_BIN` 指定的程序，否则从当前环境的 `PATH` 查找 `kubectl`；仍需显式提供 `KUBECONFIG` 和 `PLATFORM_KUBE_SERVER`。运行脚本前应确认目标集群和可用空间。
+
+控制面源码新增 `control_plane/sandbox_manifest.py`，根据服务端确定的身份生成 Agent Sandbox 候选清单；它要求镜像使用固定摘要，使用 Kata、独立 PVC 引用、非 root 及禁用默认 ServiceAccount token。单元测试及集群服务端 dry-run 校验通过。此模块只生成清单，不调用 Kubernetes，也没有接入生产环境入口；共享侧认证、网络策略、模型凭据、对账和清理尚未实现，不能直接作为可用环境。
