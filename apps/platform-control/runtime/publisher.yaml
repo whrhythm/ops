@@ -188,7 +188,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: publisher
-          image: harbor.k3s.local/internal/platform-control@sha256:63363da2c64d00d646293cdf6daedf91f175641a29b34da0c819ec327cf44272
+          image: harbor.k3s.local/internal/platform-control@sha256:5bdc12b4d8b2252c2ffdafc12d204cfd91d9daed3be531b87a67bd5855092e27
           command: [python, -m, control_plane.application_controller]
           envFrom:
             - configMapRef: {name: platform-config}
