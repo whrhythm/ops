@@ -17,9 +17,14 @@ data:
   PLATFORM_OIDC_REQUIRED_SCOPE: platform-api
   PLATFORM_ADMIN_GROUP: platform-admins
   PLATFORM_WORKSPACE_FILES_ENABLED: "true"
-  PLATFORM_WORKSPACE_AGENT_IMAGE: harbor.k3s.local/internal/platform-control@sha256:bbf5edcea65c506fddce40202f1d3cb604100df826fec680ffbcbdba19573a16
+  PLATFORM_PUBLISHER_ENABLED: "true"
+  PLATFORM_BUILDKIT_IMAGE: harbor.k3s.local/internal/codechat-buildkit@sha256:19df7a246d5d9b3d30726c4ed5c660701d577639dea2596a6c02cf75b6d5455f
+  PLATFORM_WORKSPACE_PYTHON_BASE_IMAGE: harbor.k3s.local/internal/codechat-python@sha256:914752997e0f5fb7c78351fefefb378b7d1a2c3cad7d88ebe4b195dd5751f5ff
+  PLATFORM_APPLICATION_ORIGIN: http://192.168.10.30.sslip.io:30097
+  PLATFORM_DEFAULT_APPLICATION_LIMIT: "3"
+  PLATFORM_WORKSPACE_AGENT_IMAGE: harbor.k3s.local/internal/platform-control@sha256:cdb9ea7243b7480033172d96fa7dd9c4b43ec19f14422fd92aeaf1ef14988ae6
   PLATFORM_WORKSPACE_AGENT_MAX_ITERATIONS: "40"
-  PLATFORM_WORKSPACE_SERVICE_IMAGE: harbor.k3s.local/internal/platform-control@sha256:53d9511b51a4c1c64ded7d41148a8dee9ff33da735a4fab3681dbe1e2b0cde17
+  PLATFORM_WORKSPACE_SERVICE_IMAGE: harbor.k3s.local/internal/platform-control@sha256:8af1c229351689f85b38e5abb4cf6369c0233b587d6a8ad89c7f47ddf62bce23
   PLATFORM_LITELLM_URL: http://litellm.litellm.svc.cluster.local:4000
   PLATFORM_LITELLM_MODELS: deepseek-v4-flash-v2
   SSL_CERT_FILE: /etc/platform-ca/internal-ca.crt

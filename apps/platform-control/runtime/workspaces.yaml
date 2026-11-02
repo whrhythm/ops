@@ -35,6 +35,13 @@ rules:
   - apiGroups: [cert-manager.io]
     resources: [certificates]
     verbs: [get, create]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [rolebindings]
+    verbs: [get, create]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [clusterroles]
+    resourceNames: [codechat-user-applications]
+    verbs: [bind]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -54,10 +61,10 @@ spec:
   failurePolicy: Fail
   matchConstraints:
     resourceRules:
-      - apiGroups: ["", apps, networking.k8s.io, cert-manager.io]
+      - apiGroups: ["", apps, networking.k8s.io, cert-manager.io, rbac.authorization.k8s.io]
         apiVersions: ["*"]
         operations: [CREATE, UPDATE]
-        resources: [namespaces, persistentvolumeclaims, resourcequotas, services, secrets, deployments, networkpolicies, certificates]
+        resources: [namespaces, persistentvolumeclaims, resourcequotas, services, secrets, deployments, networkpolicies, certificates, rolebindings]
   matchConditions:
     - name: workspace-controller-only
       expression: "request.userInfo.username == 'system:serviceaccount:platform-system:workspace-controller'"
@@ -68,6 +75,8 @@ spec:
       message: Personal namespaces require owner labels and restricted pod security.
     - expression: "object.kind != 'PersistentVolumeClaim' || (object.metadata.name == 'workspace-data' && object.spec.storageClassName == 'codechat-workspace-retain')"
       message: Personal storage must use the retained workspace claim.
+    - expression: "object.kind != 'RoleBinding' || (object.roleRef.kind == 'ClusterRole' && object.roleRef.name == 'codechat-user-applications' && size(object.subjects) == 1 && object.subjects[0].kind == 'ServiceAccount' && object.subjects[0].name == 'application-controller' && object.subjects[0].namespace == 'platform-system')"
+      message: User delivery permissions can bind only the fixed publisher role and service account.
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
@@ -127,7 +136,7 @@ spec:
   template:
     metadata:
       annotations:
-        codechat.io/config-revision: programming-20261102-3
+        codechat.io/config-revision: delivery-20261102-1
       labels:
         app.kubernetes.io/name: workspace-controller
         codechat.io/workspace-client: "true"
@@ -140,7 +149,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: controller
-          image: harbor.k3s.local/internal/platform-control@sha256:53d9511b51a4c1c64ded7d41148a8dee9ff33da735a4fab3681dbe1e2b0cde17
+          image: harbor.k3s.local/internal/platform-control@sha256:8af1c229351689f85b38e5abb4cf6369c0233b587d6a8ad89c7f47ddf62bce23
           command: [python, -m, control_plane.workspace_controller]
           envFrom:
             - configMapRef: {name: platform-config}

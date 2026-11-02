@@ -1,0 +1,212 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: codechat-builds
+  annotations: {argocd.argoproj.io/sync-wave: "-1", argocd.argoproj.io/sync-options: "Prune=false"}
+  labels:
+    app.kubernetes.io/managed-by: platform-control
+    pod-security.kubernetes.io/enforce: privileged
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: application-controller
+  namespace: platform-system
+  annotations: {argocd.argoproj.io/sync-wave: "0"}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: codechat-user-applications
+  annotations: {argocd.argoproj.io/sync-wave: "0"}
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [services]
+    verbs: [get, create, patch, delete]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, create, patch, delete]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [get, create, patch, delete]
+  - apiGroups: [apisix.apache.org]
+    resources: [apisixroutes]
+    verbs: [get, create, patch, delete]
+  - apiGroups: [metrics.k8s.io]
+    resources: [pods]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: codechat-build-jobs
+  namespace: codechat-builds
+  annotations: {argocd.argoproj.io/sync-wave: "0"}
+rules:
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get, create]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: codechat-build-jobs
+  namespace: codechat-builds
+  annotations: {argocd.argoproj.io/sync-wave: "0"}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: codechat-build-jobs}
+subjects: [{kind: ServiceAccount, name: application-controller, namespace: platform-system}]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: codechat-application-boundary
+  annotations: {argocd.argoproj.io/sync-wave: "0"}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["", apps, batch, networking.k8s.io, apisix.apache.org]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [services, secrets, deployments, jobs, networkpolicies, apisixroutes]
+  matchConditions:
+    - name: publisher-only
+      expression: "request.userInfo.username == 'system:serviceaccount:platform-system:application-controller'"
+  validations:
+    - expression: "request.namespace == 'codechat-builds' || request.namespace.matches('^codechat-user-[0-9a-f]{40}$')"
+      message: Application controller may operate only in build or personal namespaces.
+    - expression: "request.operation == 'DELETE' ? oldObject.metadata.labels['app.kubernetes.io/managed-by'] == 'platform-control' : object.metadata.labels['app.kubernetes.io/managed-by'] == 'platform-control'"
+      message: Application resources require platform ownership labels.
+    - expression: "request.operation == 'DELETE' || object.kind != 'Job' || (request.namespace == 'codechat-builds' && object.spec.template.spec.runtimeClassName == 'kata-qemu-runtime-rs' && object.spec.template.spec.automountServiceAccountToken == false && (!has(object.spec.template.spec.hostNetwork) || !object.spec.template.spec.hostNetwork) && (!has(object.spec.template.spec.hostPID) || !object.spec.template.spec.hostPID) && (!has(object.spec.template.spec.hostIPC) || !object.spec.template.spec.hostIPC) && object.spec.template.spec.volumes.all(v, !has(v.hostPath) && !has(v.persistentVolumeClaim)))"
+      message: Build jobs require Kata and must not receive service-account credentials.
+    - expression: "request.operation == 'DELETE' || object.kind != 'Deployment' || (object.spec.template.spec.runtimeClassName == 'kata-qemu-runtime-rs' && object.spec.template.spec.automountServiceAccountToken == false)"
+      message: User applications require Kata and must not receive service-account credentials.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: codechat-application-boundary
+  annotations: {argocd.argoproj.io/sync-wave: "0"}
+spec:
+  policyName: codechat-application-boundary
+  validationActions: [Deny]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: application-controller
+  namespace: platform-system
+  annotations: {argocd.argoproj.io/sync-wave: "0"}
+spec:
+  podSelector:
+    matchLabels: {codechat.io/publisher: "true"}
+  policyTypes: [Egress]
+  egress:
+    - to: [{ipBlock: {cidr: 192.168.10.30/32}}]
+      ports: [{protocol: TCP, port: 6443}]
+    - to: [{ipBlock: {cidr: 10.43.0.1/32}}]
+      ports: [{protocol: TCP, port: 443}]
+    - to: [{ipBlock: {cidr: 192.168.10.51/32}}]
+      ports: [{protocol: TCP, port: 443}]
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: harbor}
+      ports: [{protocol: TCP, port: 8443}]
+    - to:
+        - namespaceSelector:
+            matchLabels: {app.kubernetes.io/managed-by: platform-control}
+          podSelector:
+            matchExpressions: [{key: codechat.io/app-id, operator: Exists}]
+      ports: [{protocol: TCP, port: 8080}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: build-jobs
+  namespace: codechat-builds
+  annotations: {argocd.argoproj.io/sync-wave: "0"}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    - to:
+        - namespaceSelector: {matchLabels: {app.kubernetes.io/managed-by: platform-control}}
+          podSelector: {matchLabels: {codechat.io/component: workspace-files}}
+      ports: [{protocol: TCP, port: 8090}]
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: harbor}}
+      ports: [{protocol: TCP, port: 8443}]
+    - to: [{ipBlock: {cidr: 192.168.10.51/32}}]
+      ports: [{protocol: TCP, port: 443}]
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 80}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: application-controller
+  namespace: platform-system
+  annotations: {argocd.argoproj.io/sync-wave: "2"}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels: {app.kubernetes.io/name: application-controller}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: application-controller
+        codechat.io/publisher: "true"
+        codechat.io/workspace-client: "true"
+    spec:
+      serviceAccountName: application-controller
+      hostAliases: [{ip: 192.168.10.51, hostnames: [harbor.k3s.local]}]
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: publisher
+          image: harbor.k3s.local/internal/platform-control@sha256:8af1c229351689f85b38e5abb4cf6369c0233b587d6a8ad89c7f47ddf62bce23
+          command: [python, -m, control_plane.application_controller]
+          envFrom:
+            - configMapRef: {name: platform-config}
+            - secretRef: {name: platform-db-worker}
+            - secretRef: {name: platform-workspace-encryption}
+            - secretRef: {name: platform-harbor-provisioning}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 384Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: ca, mountPath: /etc/platform-ca, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: ca
+          configMap: {name: platform-ca}
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}
