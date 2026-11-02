@@ -17,7 +17,7 @@ data:
   PLATFORM_OIDC_REQUIRED_SCOPE: platform-api
   PLATFORM_ADMIN_GROUP: platform-admins
   PLATFORM_WORKSPACE_FILES_ENABLED: "true"
-  PLATFORM_WORKSPACE_AGENT_IMAGE: harbor.k3s.local/internal/platform-control@sha256:74fed5c81bc4fae2c83b5fa41f02324e49c81b09a03022eb6fb2f05cd0e55771
+  PLATFORM_WORKSPACE_AGENT_IMAGE: harbor.k3s.local/internal/platform-control@sha256:bbf5edcea65c506fddce40202f1d3cb604100df826fec680ffbcbdba19573a16
   PLATFORM_WORKSPACE_AGENT_MAX_ITERATIONS: "40"
   PLATFORM_WORKSPACE_SERVICE_IMAGE: harbor.k3s.local/internal/platform-control@sha256:53d9511b51a4c1c64ded7d41148a8dee9ff33da735a4fab3681dbe1e2b0cde17
   PLATFORM_LITELLM_URL: http://litellm.litellm.svc.cluster.local:4000

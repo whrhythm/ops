@@ -126,6 +126,8 @@ spec:
     matchLabels: {app.kubernetes.io/name: workspace-controller}
   template:
     metadata:
+      annotations:
+        codechat.io/config-revision: programming-20261102-3
       labels:
         app.kubernetes.io/name: workspace-controller
         codechat.io/workspace-client: "true"
