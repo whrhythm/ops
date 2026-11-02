@@ -54,7 +54,7 @@ metadata:
 rules:
   - apiGroups: [batch]
     resources: [jobs]
-    verbs: [get, create]
+    verbs: [get, create, delete]
   - apiGroups: [""]
     resources: [secrets]
     verbs: [create]
@@ -188,7 +188,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: publisher
-          image: harbor.k3s.local/internal/platform-control@sha256:894a40b7f08418fad1c470d28f3ae762e18e59971e71f4e7276df757e751176f
+          image: harbor.k3s.local/internal/platform-control@sha256:4a217388cd13d1080bf3a46a5e2d0d92e44a6b33a11a1a7299b64c7b6d0133b3
           command: [python, -m, control_plane.application_controller]
           envFrom:
             - configMapRef: {name: platform-config}
