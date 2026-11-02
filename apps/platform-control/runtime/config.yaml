@@ -16,6 +16,8 @@ data:
   PLATFORM_OIDC_CLIENT_ID: platform-console
   PLATFORM_OIDC_REQUIRED_SCOPE: platform-api
   PLATFORM_ADMIN_GROUP: platform-admins
+  PLATFORM_WORKSPACE_FILES_ENABLED: "true"
+  PLATFORM_WORKSPACE_SERVICE_IMAGE: harbor.k3s.local/internal/platform-control@sha256:9072364d98e06d5b94bc1f0c20eb0f06200f898b2692c0cffc788bf88cbd238f
   PLATFORM_LITELLM_URL: http://litellm.litellm.svc.cluster.local:4000
   PLATFORM_LITELLM_MODELS: deepseek-v4-flash-v2
   SSL_CERT_FILE: /etc/platform-ca/internal-ca.crt
