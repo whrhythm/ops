@@ -33,6 +33,7 @@ data:
   OPENID_CALLBACK_URL: /oauth/openid/callback
   OPENID_BUTTON_LABEL: Authentik
   CODECHAT_PROVISION_URL: https://platform.k3s.local:30443/internal/v1/litellm/key
+  CODECHAT_WORKSPACE_URL: https://platform.k3s.local:30443/internal/v1/workspace/
   NODE_EXTRA_CA_CERTS: /etc/librechat-ca/internal-ca.crt
   SEARCH: "false"
 ---
@@ -88,7 +89,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/codechat-librechat@sha256:a02cfcba78a131169d46f070bef442f609be02832241c38df56c71c359f64a2e
+          image: harbor.k3s.local/internal/codechat-librechat@sha256:f3d2e996cb3e934cdd50dedbae03101b39e4f5bffefdad54eb58b767cecce252
           ports:
             - containerPort: 3080
           envFrom:
