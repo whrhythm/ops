@@ -18,17 +18,20 @@ rules:
     resources: [persistentvolumes]
     verbs: [get]
   - apiGroups: [""]
-    resources: [persistentvolumeclaims, resourcequotas, services]
+    resources: [persistentvolumeclaims, resourcequotas]
     verbs: [get, create]
+  - apiGroups: [""]
+    resources: [services]
+    verbs: [get, create, patch]
   - apiGroups: [""]
     resources: [secrets]
     verbs: [create]
   - apiGroups: [apps]
     resources: [deployments]
-    verbs: [get, create]
+    verbs: [get, create, patch]
   - apiGroups: [networking.k8s.io]
     resources: [networkpolicies]
-    verbs: [get, create]
+    verbs: [get, create, patch]
   - apiGroups: [cert-manager.io]
     resources: [certificates]
     verbs: [get, create]
@@ -91,7 +94,7 @@ spec:
             matchLabels: {app.kubernetes.io/managed-by: platform-control}
           podSelector:
             matchLabels: {codechat.io/component: workspace-files}
-      ports: [{protocol: TCP, port: 8090}]
+      ports: [{protocol: TCP, port: 8090}, {protocol: TCP, port: 8091}]
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -135,7 +138,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: controller
-          image: harbor.k3s.local/internal/platform-control@sha256:9072364d98e06d5b94bc1f0c20eb0f06200f898b2692c0cffc788bf88cbd238f
+          image: harbor.k3s.local/internal/platform-control@sha256:53d9511b51a4c1c64ded7d41148a8dee9ff33da735a4fab3681dbe1e2b0cde17
           command: [python, -m, control_plane.workspace_controller]
           envFrom:
             - configMapRef: {name: platform-config}

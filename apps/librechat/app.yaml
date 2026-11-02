@@ -53,10 +53,15 @@ data:
       custom:
         - name: LiteLLM
           apiKey: user_provided
-          baseURL: http://litellm.litellm.svc.cluster.local:4000/v1
+          baseURL: https://platform.k3s.local:30443/agent/v1
+          titleConvo: false
+          headers:
+            X-CodeChat-Conversation: '{{LIBRECHAT_BODY_CONVERSATIONID}}'
           models:
-            fetch: true
+            fetch: false
             default:
+              - name: OpenHands
+                description: 编程助手：读写个人空间中的工程文件并运行测试
               - name: deepseek-v4-flash-v2
                 description: 集群内 LiteLLM 计量代理（按用户 virtual key 独立计费）
 ---
@@ -89,7 +94,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/codechat-librechat@sha256:f3d2e996cb3e934cdd50dedbae03101b39e4f5bffefdad54eb58b767cecce252
+          image: harbor.k3s.local/internal/codechat-librechat@sha256:74f791e6c34a48a5b856fb87ee2ad9c11e494e1f845d38f07758fa3b72faa2fe
           ports:
             - containerPort: 3080
           envFrom:
