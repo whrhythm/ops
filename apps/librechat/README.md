@@ -1,26 +1,27 @@
-# LibreChat 用户入口（部署中的集成基础）
+# LibreChat / CodeChat 用户入口
 
-本目录部署 LibreChat 和专用 MongoDB。控制面开发项目的列表与创建已接入；付费权益、OpenHands、实际工作空间和发布尚未接入。现有共享 OpenHands 不得作为多租户运行时。
+更新：2026-11-03。本目录部署 LibreChat 和专用 MongoDB；业务源码在 LibreChat 与 platform-control 仓库。浏览器入口：`https://chat.k3s.local:30443/`。
 
-- Argo CD 应用：`librechat`；域名：`https://chat.k3s.local:30443/`。
-- 登录使用 Authentik 的 `platform` 公共 OIDC 客户端及 PKCE，复用 issuer / subject；本地邮箱登录关闭。平台 API 仍独立验证令牌、成员和角色；仅在 LibreChat 登录不代表项目权限打通。
-- 安装前需在命名空间中创建 `librechat-secrets`、`librechat-ca` 和 `librechat-codechat-provisioning`；前两项可使用控制面仓库的 `scripts/bootstrap_librechat.py`，自动开通凭据使用 `scripts/bootstrap_model_credentials.py` 创建。脚本复用已有密钥，不自动轮换。不要将 Secret 写入 Git。
-- MongoDB 与上传目录使用 Longhorn PVC。备份需覆盖 MongoDB、上传文件和 Secret，定期执行恢复演练。当前单节点不提供高可用。
-- 不启用 LibreChat 的 Meilisearch、RAG、Dify 或本地密码注册；用户通过 Authentik 自助注册。
-- 仅供内网可信用户试用：目前没有配置注册邮箱验证，填写的邮箱不能用作已验证身份或找回密码；公开提供注册之前必须配置验证、限流及滥用防护。
+## 当前使用方式
 
-安装后应检查 Argo 同步、Pod、PVC、证书、实际 OIDC 登录与数据持久化。环境使用内部 CA，访问终端须信任该 CA；域名需解析到可访问 APISIX 30443 的节点地址。
+1. 通过 Authentik 自助注册或登录。平台自动准备或复用个人空间、关联 LiteLLM 用户与密钥；已有账号无需重新注册或手工填写密钥。
+2. 聊天框上方选择 Chat 讨论需求，选择 Coding 创建、修改、测试或发布工程。两者复用同一聊天和个人磁盘；执行过程中不能切换。Writing、Music 尚未开放。
+3. 展开“My space” → Files，上传文件或浏览 Agent 生成的代码。文件行提供预览、下载、右侧编辑和确认删除；当前删除没有回收站。个人磁盘用量包括工程依赖、虚拟环境和缓存。
+4. 在 Coding 对话中要求测试后发布，或在 My applications 选择包含 Dockerfile 的工程并点击“Publish this project”。服务应监听 `0.0.0.0:8080`。提交后观察构建/部署进度，运行且出现地址后访问；失败时查看失败原因与清理状态，再明确重试。
+5. My applications 提供访问链接、启停、日志及 CPU/内存用量。停止或删除应用保留个人工程文件。文件浏览与应用管理分开，不替换主聊天。
 
-2026-10-31 验证：LibreChat 和 MongoDB 均已启动，PVC 已绑定，内部 CA 签发的 HTTPS 页面返回 200；使用临时标记账号通过浏览器完成 Authentik 登录，并在 LibreChat 用户接口确认返回对应账号。验收账号及会话随后已清理。服务重启后的对话持久化、用户与控制面租户映射、跨租户权限、模拟付款界面和 Agent 执行仍需分别验收。
+模型密钥由平台管理，一次性 1 美元测试模型预算不会因重复登录再次发放；该预算与磁盘容量不同。真实支付、套餐升级、PostgreSQL/MinIO 项目开通及跨存储总量账本尚未上线。当前显示个人磁盘用量，不是完整套餐用量。模型测试价格不能直接用于财务结算。
 
-同日新增的内网自助注册已使用随机临时账号实际验证：填写资料后可登录 LibreChat，账号角色为 `USER`；验收用户和会话已清理。邮箱验证及公网防滥用尚未实现。
+LibreChat 原生 Projects 用于整理聊天，与持久个人文件空间不同。共享 OpenHands Web 实例不是用户编程运行时；Coding 使用共享网关和用户个人 Kata 环境中的轻量执行进程。
 
-访问工作站需将 `chat.k3s.local` 与 `authentik.k3s.local` 解析到 `192.168.10.30`，并信任平台内部 CA；两个入口均使用端口 `30443`。管理员应通过现有平台手册取得可信 CA，勿将浏览器忽略证书错误作为正式配置。
+## 部署与配置
 
-2026-10-31：用户通过 Authentik 注册或重新登录时，控制面基于验证后的身份幂等创建 LiteLLM 用户和专属密钥，并设置一次性 1 美元测试预算。LibreChat 服务端加密保存密钥，用户无需手工提供；已有会话需退出并重新登录。管理员需一并备份控制面数据库、LibreChat 数据及相关加密 Secret。模型单价尚为占位值，不可用于财务结算；注册邮箱验证、公网反滥用、OpenHands 的用户计量和管理界面中的停用/轮换仍未完成。
+- ArgoCD 应用：`librechat`；平台后端：`platform-control`；当前地址解析到 `192.168.10.30`。
+- Authentik `platform` OIDC 客户端使用 PKCE；浏览器访问 chat 与 authentik 两个域名及端口 30443，须正常验证内部 CA 证书。
+- 文件与应用使用 LibreChat 同源接口，后端转发平台 API；普通用户操作不再依赖浏览器直接请求 platform 域名。
+- `librechat.yaml` 中的 `codechat.capabilities` 显式启用能力入口。chat/coding 路由别名需与平台 `PLATFORM_CAPABILITY_*` 配置一致；真实聊天模型由平台允许列表验证，旧 OpenHands 会话保持兼容。
+- 安装前创建 `librechat-secrets`、`librechat-ca`、`librechat-codechat-provisioning`。控制面仓库的 `scripts/bootstrap_librechat.py`、`scripts/bootstrap_model_credentials.py` 复用已有密钥，不自动轮换。Secret 不写入 Git。
+- MongoDB、LibreChat 上传目录与个人工作卷是不同数据，应一并备份并演练恢复。当前单节点不提供高可用。
+- 不启用 Meilisearch、RAG、Dify 或 LibreChat 本地密码注册。当前面向内部可信用户；注册邮箱验证及公网反滥用仍待配置。
 
-2026-11-02：使用两位临时用户在正式入口完成 Authentik 登录、进入各自的开发项目空间、创建项目记录和跨租户读取拒绝验收，临时用户、密钥和项目记录已清理，审计保留。这个项目入口目前只创建控制面项目记录，不会启动沙箱、OpenHands 或应用；它与 LibreChat 自身用于整理聊天的项目功能也不同。
-
-2026-11-02（个人空间入口）：LibreChat 左侧 Projects 上方的“我的空间”（英文界面为“My space”）可在侧边栏展开，不会替换当前聊天。入口目前提示个人文件功能尚不可用；真实磁盘、文件列表、上传、Agent 代码执行和部署仍未接通。LibreChat 原生 Projects 用于整理对话，与个人文件空间不是同一功能。新增状态文案可能使用英文后备翻译。
-
-原有个人空间计划页面由浏览器直接访问 `platform.k3s.local`，访问终端还须信任该域名证书的内部 CA；仅能打开 LibreChat 页面不代表浏览器也信任平台 API。用户暂不安装内部 CA 且暂无公开证书域名时，原计划页可能显示无法连接；无需通过忽略证书错误来绕过此限制。实际文件功能接入前需设计并验证安全的同源访问方案或使用受信任证书。
+详细用户手册、编程协议及验收记录见 [platform-control 文档](https://github.com/whrhythm/platform-control/tree/main/docs)。自动模型开通运维见 [MODEL_KEY_GUIDE.md](MODEL_KEY_GUIDE.md)。
