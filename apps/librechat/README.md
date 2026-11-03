@@ -14,6 +14,8 @@
 
 LibreChat 原生 Projects 用于整理聊天，与持久个人文件空间不同。共享 OpenHands Web 实例不是用户编程运行时；Coding 使用共享网关和用户个人 Kata 环境中的轻量执行进程。
 
+项目数据库：[使用手册](https://github.com/whrhythm/platform-control/blob/main/docs/project-databases-guide.md)、[真实 UI 验收](https://github.com/whrhythm/platform-control/blob/main/docs/project-databases-acceptance-20261103.md)。验收覆盖上传测试、OpenHands 读写数据库、镜像构建推送发布、访问计数持久化、停止恢复、明确空库销毁和逻辑账本用量。
+
 ## 部署与配置
 
 - ArgoCD 应用：`librechat`；平台后端：`platform-control`；当前地址解析到 `192.168.10.30`。
