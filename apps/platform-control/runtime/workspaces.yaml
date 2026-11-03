@@ -140,7 +140,7 @@ spec:
   template:
     metadata:
       annotations:
-        codechat.io/config-revision: delivery-20261102-1
+        codechat.io/config-revision: membership-20261103-2
       labels:
         app.kubernetes.io/name: workspace-controller
         codechat.io/workspace-client: "true"
