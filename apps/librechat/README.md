@@ -10,9 +10,11 @@
 4. 在 Coding 对话中要求测试后发布，或在 My applications 选择包含 Dockerfile 的工程并点击“Publish this project”。服务应监听 `0.0.0.0:8080`。提交后观察构建/部署进度，运行且出现地址后访问；失败时查看失败原因与清理状态，再明确重试。
 5. My applications 提供访问链接、启停、日志及 CPU/内存用量。停止或删除应用保留个人工程文件。文件浏览与应用管理分开，不替换主聊天。
 
-模型密钥由平台管理，一次性 1 美元测试模型预算不会因重复登录或空间升级再次发放；该预算与磁盘容量不同。Storage & plan 已提供测试套餐升级、取消、测试确认和原盘扩容，真实扣费/续费尚未接入。升级观察完成才显示新权益，失败保留文件和原权益。PostgreSQL 项目开通、自动连接、实际用量和明确销毁已接入 Databases 面板；数据库另有 256 MiB 测试预算，两个 128 MiB 预留，不是硬写入配额。MinIO、Harbor 镜像和应用数据卷完整计量仍待实施；未计量分项不显示为零。当前测试价格不可用于财务结算。
+模型密钥由平台管理，一次性 1 美元测试模型预算不会因重复登录或空间升级再次发放；该预算与磁盘容量不同。Storage & plan 已提供测试套餐升级、取消、测试确认和原盘扩容，真实扣费/续费尚未接入。升级观察完成才显示新权益，失败保留文件和原权益。PostgreSQL 项目开通、自动连接、实际用量和明确销毁已接入 Databases 面板；数据库另有 256 MiB 测试预算，两个 128 MiB 预留，不是硬写入配额。现在还会自动准备 256 MiB 原生配额的私有对象桶，Coding 测试和下次发布自动取得连接。账本汇总文件、数据库、对象版本、Harbor 原生计数及额外应用 PVC 核验；全部样本新鲜有效才显示完整受管逻辑用量，否则显示小计及未知/过期。分类额度独立，Harbor 原生无限额度如实标示。文件测试升级不扩大数据库、对象、镜像或模型额度；当前价格不可用于财务结算。
 
 LibreChat 原生 Projects 用于整理聊天，与持久个人文件空间不同。共享 OpenHands Web 实例不是用户编程运行时；Coding 使用共享网关和用户个人 Kata 环境中的轻量执行进程。
+
+个人存储：[使用手册](https://github.com/whrhythm/platform-control/blob/main/docs/storage-accounting-guide.md)、[真实 UI 验收](https://github.com/whrhythm/platform-control/blob/main/docs/storage-accounting-acceptance-20261103.md)。包含对象应用的聊天测试、发布、启停保留及失败回收；真实支付、跨存储套餐调整、额外应用卷创建与备份恢复尚未接入。
 
 项目数据库：[使用手册](https://github.com/whrhythm/platform-control/blob/main/docs/project-databases-guide.md)、[真实 UI 验收](https://github.com/whrhythm/platform-control/blob/main/docs/project-databases-acceptance-20261103.md)。验收覆盖上传测试、OpenHands 读写数据库、镜像构建推送发布、访问计数持久化、停止恢复、明确空库销毁和逻辑账本用量。
 

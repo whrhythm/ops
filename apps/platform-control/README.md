@@ -1,6 +1,18 @@
 # 平台控制面部署
 
-本目录为 GitOps 部署，业务源码位于同工作区 `platform-control/`。当前后端已提供个人持久空间、文件接口、编程执行网关及真实构建/发布控制器；管理员资源申请控制台保留规划功能。普通用户从 [LibreChat](../librechat/README.md) 操作。项目 PostgreSQL、MinIO 开通与统一套餐账本仍待实施。
+本目录为 GitOps 部署，业务源码位于同工作区 `platform-control/`。后端提供个人持久空间、文件管理、编程执行、构建发布、项目 PostgreSQL、自动私有 MinIO 桶及五类存储计量；管理员资源申请控制台保留规划功能。普通用户从 [LibreChat](../librechat/README.md) 操作。真实支付、跨服务统一硬配额和对象/镜像付费扩容仍待实施。
+
+## 存储计量部署（2026-11-03）
+
+- `runtime/storage.yaml` 是独立对象准备和计量服务，复用已验证的应用控制器 SA 与用户 RoleBinding。只使用专用非 root MinIO 管理账号；业务 API 不挂载此账号。
+- 先在业务仓库执行 `scripts/bootstrap_object_storage.py`，指定已构建的 `PLATFORM_STORAGE_BOOTSTRAP_IMAGE`。脚本通过临时本机转发创建或核验 Secret `platform-object-storage-provisioner`；不输出凭据，不改变已有对象桶，不对外暴露 MinIO。
+- 新库迁移为 `0013_storage_providers`。迁移 hook 先完成 schema 与受限 grants，再启动新后台。对象连接由用户 namespace 的 Secret 注入应用，不进入 Git 或镜像。
+- `PLATFORM_STORAGE_METERING_ENABLED` 与 `PLATFORM_OBJECT_STORAGE_ENABLED` 在配置中显式开启。MinIO 当前为内部 HTTP 9000；每桶原生测试额度 256 MiB；完成的对象版本纳入计量，不设置自动销毁已完成对象的规则。
+- 后台 worker 账号预算至少 16 个连接；已有环境执行 `scripts/configure_worker_connections.py`，只上调原受管角色的连接数，不改密码。四个后台部署分别限制连接池 1 个常驻连接、最多 1 个溢出，预留滚动更新与探针余量。API 保留独立连接预算。
+- 当前应用不创建额外 PVC；完整核验仅有原个人卷才记额外应用盘为零。未知额外卷显示未完整计量。Harbor 原生无限配额如实显示，不强制缩小既有用户权益。
+- 文件套餐测试升级仅扩大文件盘和应用数。数据库、对象及镜像额度分别执行，尚未形成可挪用的统一硬配额。
+
+完整协议、用户手册与真实验收在业务仓库 `docs/storage-accounting-*.md`；部署清单固定不可变 digest。回滚镜像不自动降级 schema、删除对象桶或缩回用户磁盘。
 
 用户操作见 [使用手册](USER_GUIDE.md)。已完成真实 PKCE 双用户登录、项目创建、幂等、计划 worker、配额预留/释放、跨租户拒绝和 API Pod 替换后的持久化验收。临时测试账号和元数据已清理，成功操作审计保留。
 
@@ -22,7 +34,7 @@ ssh -N -L 127.0.0.1:30443:192.168.10.30:30443 edge@100.92.98.122
 
 使用现有 Authentik 用户登录。`akadmin` 已加入非 Authentik 超级权限的 `platform-admins` 组；平台管理员权限仅在平台自己的管理接口生效，不会把普通平台管理员变成 Authentik 超级管理员。
 
-## 镜像
+## 历史初始镜像（2026-10-31）
 
 - 标签：`harbor.k3s.local/internal/platform-control:0.1.0-20261031.1`
 - 部署固定 digest：`sha256:ad2973826dac4965dcc7ffdc3e1386ed7e30b5fda9d018373dd907003ab2160b`；模拟支付默认关闭。
