@@ -35,6 +35,10 @@ spec:
     # These new platform identities may connect only to their own control DB.
     # Existing application roles and operator-local rules are unaffected.
     pg_hba:
+      - hostssl sameuser /^ccdb_[0-9a-f]{32}$ all scram-sha-256
+      - host all /^ccdb_[0-9a-f]{32}$ all reject
+      - hostssl postgres,/^ccdb_[0-9a-f]{32}$ codechat_db_provisioner all scram-sha-256
+      - host all codechat_db_provisioner all reject
       - hostssl platform_control platform_migrator,platform_api,platform_worker all scram-sha-256
       - host all platform_migrator,platform_api,platform_worker all reject
     parameters:

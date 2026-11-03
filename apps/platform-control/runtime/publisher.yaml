@@ -31,7 +31,7 @@ rules:
     verbs: [get, create, patch, delete]
   - apiGroups: [""]
     resources: [secrets]
-    verbs: [create]
+    verbs: [get, create, delete]
   - apiGroups: [apps]
     resources: [deployments]
     verbs: [get, create, patch, delete]
@@ -114,6 +114,9 @@ spec:
     matchLabels: {codechat.io/publisher: "true"}
   policyTypes: [Egress]
   egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: postgres}}
+      ports: [{protocol: TCP, port: 5432}]
     - to: [{ipBlock: {cidr: 192.168.10.30/32}}]
       ports: [{protocol: TCP, port: 6443}]
     - to: [{ipBlock: {cidr: 10.43.0.1/32}}]
@@ -188,13 +191,14 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: publisher
-          image: harbor.k3s.local/internal/platform-control@sha256:e1744af76006f191e7bf48aed3eaf22b51e8c43bae25a96f42eb43ace2ed25af
+          image: harbor.k3s.local/internal/platform-control@sha256:2711914408eca5a1f749bcdd81cb6562a45f5a72f161d97a97ecdc7c40a86859
           command: [python, -m, control_plane.application_controller]
           envFrom:
             - configMapRef: {name: platform-config}
             - secretRef: {name: platform-db-worker}
             - secretRef: {name: platform-workspace-encryption}
             - secretRef: {name: platform-harbor-provisioning}
+            - secretRef: {name: platform-project-database-provisioner}
           resources:
             requests: {cpu: 50m, memory: 128Mi}
             limits: {cpu: 500m, memory: 384Mi}
