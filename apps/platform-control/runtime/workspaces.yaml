@@ -153,8 +153,11 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: controller
-          image: harbor.k3s.local/internal/platform-control@sha256:d2557be9e88712e6b00ab071291cc01ad4aae9486b363fbfd3fef6889a3eae93
+          image: harbor.k3s.local/internal/platform-control@sha256:97e1b32d0981fac4a188a82a1878f91531c19113e1ec228fc67729b8283c7a25
           command: [python, -m, control_plane.workspace_controller]
+          env:
+            - {name: PLATFORM_DATABASE_POOL_SIZE, value: "1"}
+            - {name: PLATFORM_DATABASE_POOL_OVERFLOW, value: "1"}
           envFrom:
             - configMapRef: {name: platform-config}
             - secretRef: {name: platform-db-worker}
