@@ -32,6 +32,9 @@ rules:
   - apiGroups: [""]
     resources: [secrets]
     verbs: [get, create, delete]
+  - apiGroups: [""]
+    resources: [persistentvolumeclaims]
+    verbs: [get, list]
   - apiGroups: [apps]
     resources: [deployments]
     verbs: [get, create, patch, delete]
@@ -121,6 +124,9 @@ spec:
   policyTypes: [Egress]
   egress:
     - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: minio}}
+      ports: [{protocol: TCP, port: 9000}]
+    - to:
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: postgres}}
       ports: [{protocol: TCP, port: 5432}]
     - to: [{ipBlock: {cidr: 192.168.10.30/32}}]
@@ -197,7 +203,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: publisher
-          image: harbor.k3s.local/internal/platform-control@sha256:e438e33cacbd337d73931c15dfb4b0ff88654fd5ed4ae34b0e72d5b509d8c9c2
+          image: harbor.k3s.local/internal/platform-control@sha256:d2557be9e88712e6b00ab071291cc01ad4aae9486b363fbfd3fef6889a3eae93
           command: [python, -m, control_plane.application_controller]
           envFrom:
             - configMapRef: {name: platform-config}

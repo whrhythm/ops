@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storage-controller
+  namespace: platform-system
+  annotations: {argocd.argoproj.io/sync-wave: "2"}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels: {app.kubernetes.io/name: storage-controller}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: storage-controller
+        codechat.io/publisher: "true"
+    spec:
+      serviceAccountName: application-controller
+      hostAliases: [{ip: 192.168.10.51, hostnames: [harbor.k3s.local]}]
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: storage
+          image: harbor.k3s.local/internal/platform-control@sha256:d2557be9e88712e6b00ab071291cc01ad4aae9486b363fbfd3fef6889a3eae93
+          command: [python, -m, control_plane.storage_controller]
+          envFrom:
+            - configMapRef: {name: platform-config}
+            - secretRef: {name: platform-db-worker}
+            - secretRef: {name: platform-workspace-encryption}
+            - secretRef: {name: platform-harbor-provisioning}
+            - secretRef: {name: platform-object-storage-provisioner}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 384Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: ca, mountPath: /etc/platform-ca, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: ca
+          configMap: {name: platform-ca}
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}

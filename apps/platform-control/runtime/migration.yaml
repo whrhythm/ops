@@ -25,7 +25,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: migrate
-          image: harbor.k3s.local/internal/platform-control@sha256:e438e33cacbd337d73931c15dfb4b0ff88654fd5ed4ae34b0e72d5b509d8c9c2
+          image: harbor.k3s.local/internal/platform-control@sha256:d2557be9e88712e6b00ab071291cc01ad4aae9486b363fbfd3fef6889a3eae93
           command: [/bin/sh, -ec]
           args:
             - |
@@ -98,6 +98,10 @@ data:
         db.execute(text("GRANT SELECT, UPDATE ON capacity_accounts, capacity_orders TO platform_worker"))
         db.execute(text("GRANT SELECT, INSERT, UPDATE ON project_databases TO platform_api"))
         db.execute(text("GRANT SELECT, UPDATE ON project_databases TO platform_worker"))
+        db.execute(text("GRANT SELECT ON user_object_storage TO platform_api"))
+        db.execute(text("GRANT UPDATE (status, error_code) ON user_object_storage TO platform_api"))
+        db.execute(text("GRANT SELECT, INSERT, UPDATE ON user_object_storage, storage_measurements TO platform_worker"))
+        db.execute(text("GRANT SELECT ON user_registries TO platform_api"))
         db.execute(text("GRANT SELECT, INSERT ON audit_events TO platform_api"))
         db.execute(text("GRANT SELECT ON alembic_version TO platform_api, platform_worker"))
         db.execute(text("GRANT SELECT ON tenants, resources, operations TO platform_worker"))
