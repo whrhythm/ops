@@ -19,7 +19,11 @@ rules:
     verbs: [get]
   - apiGroups: [""]
     resources: [persistentvolumeclaims, resourcequotas]
-    verbs: [get, create]
+    verbs: [get, create, patch]
+  - apiGroups: [storage.k8s.io]
+    resources: [storageclasses]
+    resourceNames: [codechat-workspace-retain]
+    verbs: [get]
   - apiGroups: [""]
     resources: [services]
     verbs: [get, create, patch]
@@ -149,7 +153,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: controller
-          image: harbor.k3s.local/internal/platform-control@sha256:8cbe7ebd5c8226f9810b655f40cbe13d7c6a06122d73f4111242e563f1da5e95
+          image: harbor.k3s.local/internal/platform-control@sha256:d832464c581fafef90a0cabd673abd4e4ef6c6dc40b03840555ef2a023618e06
           command: [python, -m, control_plane.workspace_controller]
           envFrom:
             - configMapRef: {name: platform-config}

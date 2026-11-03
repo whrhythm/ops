@@ -26,13 +26,20 @@ data:
   PLATFORM_WORKSPACE_AGENT_IMAGE: harbor.k3s.local/internal/platform-control@sha256:658cda1ff571f6ee005eca8cd1e5654075727f3181f1df55c2e9cd6975fad131
   PLATFORM_WORKSPACE_AGENT_MAX_ITERATIONS: "40"
   PLATFORM_WORKSPACE_AGENT_MAX_SECONDS: "180"
-  PLATFORM_WORKSPACE_SERVICE_IMAGE: harbor.k3s.local/internal/platform-control@sha256:8e5cd9feecc968b74018e761672437d04b6c0a40f47171e6890721394ecd2958
+  PLATFORM_WORKSPACE_SERVICE_IMAGE: harbor.k3s.local/internal/platform-control@sha256:d832464c581fafef90a0cabd673abd4e4ef6c6dc40b03840555ef2a023618e06
   PLATFORM_LITELLM_URL: http://litellm.litellm.svc.cluster.local:4000
   PLATFORM_LITELLM_MODELS: deepseek-v4-flash-v2
   PLATFORM_CAPABILITIES_ENABLED: "true"
   PLATFORM_CAPABILITY_CHAT_ROUTE: codechat-chat
   PLATFORM_CAPABILITY_CODING_ROUTE: codechat-coding
   PLATFORM_CAPABILITY_CHAT_MODEL: deepseek-v4-flash-v2
+  # Test entitlement orders only. No real payment provider or recurring billing.
+  PLATFORM_TEST_PAYMENTS_ENABLED: "true"
+  PLATFORM_CAPACITY_UPGRADES_ENABLED: "true"
+  PLATFORM_CAPACITY_RESIZE_TIMEOUT_SECONDS: "900"
+  PLATFORM_CAPACITY_FILESYSTEM_OVERHEAD_PERCENT: "10"
+  PLATFORM_CAPACITY_PLANS_JSON: >-
+    [{"id":"basic","version":"test-v1","name":"Basic","storage_gib":4,"application_limit":5,"amount_minor":1000,"currency":"CNY"},{"id":"pro","version":"test-v1","name":"Pro","storage_gib":8,"application_limit":10,"amount_minor":2000,"currency":"CNY"}]
   SSL_CERT_FILE: /etc/platform-ca/internal-ca.crt
   PYTHONDONTWRITEBYTECODE: "1"
   PYTHONUNBUFFERED: "1"
