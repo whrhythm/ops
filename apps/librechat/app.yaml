@@ -47,6 +47,12 @@ data:
     version: 1.3.18
     codechat:
       filePreviewMaxBytes: 1048576
+      capabilities:
+        enabled: true
+        endpoint: LiteLLM
+        chatRoute: codechat-chat
+        codingRoute: codechat-coding
+        maxContextTokens: 32000
     registration:
       socialLogins: ["openid"]
     # LibreChat's encrypted per-user key mechanism is populated by the
@@ -57,15 +63,16 @@ data:
           apiKey: user_provided
           baseURL: https://platform.k3s.local:30443/agent/v1
           titleConvo: false
+          modelDisplayLabel: CodeChat
           headers:
             X-CodeChat-Conversation: '{{LIBRECHAT_BODY_CONVERSATIONID}}'
           models:
             fetch: false
             default:
-              - name: OpenHands
-                description: 编程助手：读写个人空间中的工程文件并运行测试
-              - name: deepseek-v4-flash-v2
-                description: 集群内 LiteLLM 计量代理（按用户 virtual key 独立计费）
+              - name: codechat-chat
+                description: 讨论需求与规划
+              - name: codechat-coding
+                description: 在个人磁盘编写、测试和发布项目
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -96,7 +103,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/codechat-librechat@sha256:fe087bb19098fbe0cafefd83768b8da22ef2a14bce9f94afb963a512fb6b1045
+          image: harbor.k3s.local/internal/codechat-librechat@sha256:90b8ed7162f984d152223593623323c27616d8d1da4c218a0d26e0d957d533ed
           ports:
             - containerPort: 3080
           envFrom:
