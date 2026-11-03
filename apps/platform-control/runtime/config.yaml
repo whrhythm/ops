@@ -37,23 +37,25 @@ data:
   PLATFORM_WORKSPACE_PIP_INDEX_URL: https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
   PLATFORM_BUILD_SCRATCH_MIB: "2048"
   PLATFORM_BUILD_MEMORY_MIB: "3072"
-  PLATFORM_WORKSPACE_AGENT_IMAGE: harbor.k3s.local/internal/platform-control@sha256:85ce0d905a8ff53df04a9f782691ec095d0f6c1340c870b4f0392ad3d17963df
+  PLATFORM_WORKSPACE_AGENT_IMAGE: harbor.k3s.local/internal/platform-control@sha256:203b122a6e3f2202cccc5beaf858e70c58a76bd2df28e45e1eb6448f278760a6
   PLATFORM_WORKSPACE_AGENT_MAX_ITERATIONS: "40"
   PLATFORM_WORKSPACE_AGENT_MAX_SECONDS: "180"
-  PLATFORM_WORKSPACE_SERVICE_IMAGE: harbor.k3s.local/internal/platform-control@sha256:d832464c581fafef90a0cabd673abd4e4ef6c6dc40b03840555ef2a023618e06
+  PLATFORM_WORKSPACE_SERVICE_IMAGE: harbor.k3s.local/internal/platform-control@sha256:0e826fe0829d882f6545713e4f930efb1ddf88a4dee56d453ec2ee77548763a5
   PLATFORM_LITELLM_URL: http://litellm.litellm.svc.cluster.local:4000
   PLATFORM_LITELLM_MODELS: deepseek-v4-flash-v2
   PLATFORM_CAPABILITIES_ENABLED: "true"
   PLATFORM_CAPABILITY_CHAT_ROUTE: codechat-chat
   PLATFORM_CAPABILITY_CODING_ROUTE: codechat-coding
   PLATFORM_CAPABILITY_CHAT_MODEL: deepseek-v4-flash-v2
+  # Initial test settlement rule, not a live FX quotation. Editable in admin UI.
+  PLATFORM_MODEL_SETTLEMENT_CNY_PER_USD: "7.000000"
   # Test entitlement orders only. No real payment provider or recurring billing.
   PLATFORM_TEST_PAYMENTS_ENABLED: "true"
   PLATFORM_CAPACITY_UPGRADES_ENABLED: "true"
   PLATFORM_CAPACITY_RESIZE_TIMEOUT_SECONDS: "900"
   PLATFORM_CAPACITY_FILESYSTEM_OVERHEAD_PERCENT: "10"
   PLATFORM_CAPACITY_PLANS_JSON: >-
-    [{"id":"basic","version":"test-v1","name":"Basic","storage_gib":4,"application_limit":5,"amount_minor":1000,"currency":"CNY"},{"id":"pro","version":"test-v1","name":"Pro","storage_gib":8,"application_limit":10,"amount_minor":2000,"currency":"CNY"}]
+    [{"id":"basic","version":"test-v2","name":"基础版","description":"适合日常聊天、学习与轻量编程项目","storage_gib":4,"application_limit":5,"amount_minor":1000,"model_credit_cny_minor":1000,"currency":"CNY","features":["上传、预览和编辑项目文件","编程助手执行测试与镜像发布","查看应用日志和运行状态"]},{"id":"pro","version":"test-v2","name":"专业版","description":"适合持续开发与多个应用项目","storage_gib":8,"application_limit":10,"amount_minor":2000,"model_credit_cny_minor":2000,"currency":"CNY","features":["包含基础版全部功能","更大的个人项目与依赖空间","更多发布应用名额"]}]
   SSL_CERT_FILE: /etc/platform-ca/internal-ca.crt
   PYTHONDONTWRITEBYTECODE: "1"
   PYTHONUNBUFFERED: "1"
