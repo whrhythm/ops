@@ -4,6 +4,10 @@
 
 ## 存储计量部署（2026-11-03）
 
+后续模型与套餐阶段已迁移到 `0014_ai_membership`。`runtime/billing.yaml` 新增独立额度控制器，使用受管 LiteLLM 账号预算与钱包观察，不持有 Kubernetes 操作权限。管理员策略存于数据库，GitOps 默认配置不覆盖已保存策略。人民币套餐按订单汇率快照折为美元预算，保留 spend；付款仍为模拟。当前五个后台进程各限制连接池 1+1，worker 总连接预算仍为 16。操作和验收见业务仓库 [模型与套餐手册](https://github.com/whrhythm/platform-control/blob/main/docs/model-membership-guide.md)。
+
+修改 `PLATFORM_WORKSPACE_AGENT_IMAGE` 后须同步更新工作空间控制器 Pod 模板 `codechat.io/config-revision`，否则其环境变量不会重载。验收以用户执行容器实际 image digest 为准；更新计算容器不删除原 PVC。此次执行镜像为 `ec1dd81f…`，文件服务为 `0e826fe0…`。
+
 - `runtime/storage.yaml` 是独立对象准备和计量服务，复用已验证的应用控制器 SA 与用户 RoleBinding。只使用专用非 root MinIO 管理账号；业务 API 不挂载此账号。
 - 先在业务仓库执行 `scripts/bootstrap_object_storage.py`，指定已构建的 `PLATFORM_STORAGE_BOOTSTRAP_IMAGE`。脚本通过临时本机转发创建或核验 Secret `platform-object-storage-provisioner`；不输出凭据，不改变已有对象桶，不对外暴露 MinIO。
 - 新库迁移为 `0013_storage_providers`。迁移 hook 先完成 schema 与受限 grants，再启动新后台。对象连接由用户 namespace 的 Secret 注入应用，不进入 Git 或镜像。

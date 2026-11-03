@@ -4,6 +4,8 @@
 
 2026-11-03 更新：个人空间内已增加项目数据库及自动私有对象存储，Storage & plan 显示五类逻辑用量与测试升级；具体用法见业务仓库 `docs/storage-accounting-guide.md`。下文的“计划”说明只适用于管理员旧资源申请记录，不能用于判断普通用户实际运行环境。
 
+同日后续更新：“套餐与用量”增加模型余额、真实 Token 用量与人民币模拟充值；管理员控制台提供“模型与套餐管理”，配置普通聊天和编程默认模型、允许模型、结算汇率与套餐。普通用户从输入框加号旁选择“聊天 / 编程”，文件夹可下载 ZIP，进度合并折叠、标题自动摘要。详见[当前使用手册](https://github.com/whrhythm/platform-control/blob/main/docs/user-guide.md)和[九项改进验收](https://github.com/whrhythm/platform-control/blob/main/docs/chat-membership-acceptance-20261103.md)。
+
 版本：`0.1.0-20261031.1`；更新：2026-10-31。
 
 ## 1. 当前能做什么
