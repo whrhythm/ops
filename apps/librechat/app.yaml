@@ -47,6 +47,8 @@ data:
     version: 1.3.18
     codechat:
       filePreviewMaxBytes: 1048576
+      capacity:
+        enabled: true
       capabilities:
         enabled: true
         endpoint: LiteLLM
@@ -103,7 +105,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/codechat-librechat@sha256:d3cc4617cf7fbcbf55499f320219c6f3cc1b801a9feebc117eb15922e6bd75f7
+          image: harbor.k3s.local/internal/codechat-librechat@sha256:73239700e30e42d5a2871435a2ac69f17957957f0eb56c386bd7c9800c03288d
           ports:
             - containerPort: 3080
           envFrom:
