@@ -129,7 +129,8 @@ spec:
     - to:
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: postgres}}
       ports: [{protocol: TCP, port: 5432}]
-    - to: [{ipBlock: {cidr: 192.168.10.30/32}}]
+    # The in-cluster API Service can be DNATed to the node before egress policy.
+    - to: [{ipBlock: {cidr: 192.168.110.126/32}}]
       ports: [{protocol: TCP, port: 6443}]
     - to: [{ipBlock: {cidr: 10.43.0.1/32}}]
       ports: [{protocol: TCP, port: 443}]
