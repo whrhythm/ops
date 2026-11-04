@@ -47,7 +47,7 @@ spec:
         - {protocol: TCP, port: 9443}
     - to:
         - ipBlock:
-            cidr: 192.168.10.30/32
+            cidr: 192.168.110.126/32
       ports:
         - {protocol: TCP, port: 30443}
     # In-cluster LiteLLM metering proxy; per-user virtual keys are sent here.

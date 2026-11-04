@@ -30,9 +30,12 @@ spec:
               ipList:
                 - 127.0.0.0/8
                 - 172.16.0.0/16
-                # Current kube-proxy SNAT presents service callers as the node.
+                # kube-proxy SNAT can present the KIC as the node's LAN or
+                # Tailscale address. Keep the old LAN alias during migration.
                 # A private Secret replaces the chart's public default key.
                 - 192.168.10.30/32
+                - 192.168.110.126/32
+                - 100.92.98.122/32
           ssl:
             enabled: true
           pluginAttrs:

@@ -102,7 +102,7 @@ spec:
     spec:
       automountServiceAccountToken: false
       hostAliases:
-        - ip: 192.168.10.30
+        - ip: 192.168.110.126
           hostnames: [authentik.k3s.local, platform.k3s.local]
       securityContext:
         runAsUser: 1000
