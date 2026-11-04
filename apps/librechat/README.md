@@ -1,4 +1,4 @@
-# LibreChat / CodeChat 用户入口
+# 星桥用户入口
 
 更新：2026-11-03。本目录部署 LibreChat 和专用 MongoDB；业务源码在 LibreChat 与 platform-control 仓库。浏览器入口：`https://chat.k3s.local:30443/`。
 

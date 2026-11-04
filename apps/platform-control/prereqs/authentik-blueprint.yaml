@@ -18,7 +18,7 @@ data:
           slug: codechat-enrollment
         attrs:
           name: CodeChat internal enrollment
-          title: CodeChat 内网试用注册（邮箱尚未验证）
+          title: 星桥内网试用注册（邮箱尚未验证）
           designation: enrollment
           authentication: require_unauthenticated
       - model: authentik_stages_prompt.prompt
