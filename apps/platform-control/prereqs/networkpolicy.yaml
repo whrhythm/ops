@@ -12,6 +12,15 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
+              kubernetes.io/metadata.name: librechat
+          podSelector:
+            matchLabels:
+              app: librechat
+      ports:
+        - {protocol: TCP, port: 8088}
+    - from:
+        - namespaceSelector:
+            matchLabels:
               kubernetes.io/metadata.name: apisix
           podSelector:
             matchLabels:
@@ -27,6 +36,15 @@ spec:
         - protocol: TCP
           port: 8088
   egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: codeapi
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: api
+      ports:
+        - {protocol: TCP, port: 3112}
     - to:
         - namespaceSelector:
             matchLabels:

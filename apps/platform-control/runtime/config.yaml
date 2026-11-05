@@ -6,6 +6,11 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 data:
+  PLATFORM_CODE_EXECUTION_ENABLED: "true"
+  PLATFORM_CODE_EXECUTION_PUBLIC_KEY: |
+    -----BEGIN PUBLIC KEY-----
+    MCowBQYDK2VwAyEAr7TXAsJ6Z0QhQoqZ2/UedZ5HEh0k7Ws0H1dqV9dZrSo=
+    -----END PUBLIC KEY-----
   PLATFORM_PUBLIC_ORIGIN: https://platform.k3s.local:30443
   PLATFORM_ADDITIONAL_PUBLIC_ORIGIN: https://chat.k3s.local:30443
   PLATFORM_OIDC_ISSUER: https://authentik.k3s.local:30443/application/o/platform/

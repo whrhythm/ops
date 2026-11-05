@@ -161,10 +161,10 @@ spec:
       from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: librechat
+              kubernetes.io/metadata.name: platform-system
           podSelector:
             matchLabels:
-              app: librechat
+              app.kubernetes.io/name: platform-api
   egress:
     - to:
         - namespaceSelector: {}

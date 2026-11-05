@@ -15,6 +15,10 @@
     },
     "httpJsonLimit": "4mb",
     "extraEnv": [
+      {"name": "EXECUTION_MANIFEST_MAX_UPLOAD_BYTES", "value": "16777216"},
+      {"name": "EXECUTION_MANIFEST_MAX_OUTPUT_FILES", "value": "10"},
+      {"name": "MAX_FILE_SIZE", "value": "16777216"},
+      {"name": "SANDBOX_RUN_MEMORY_LIMIT", "value": "268435456"},
       {
         "name": "LOCAL_MODE",
         "value": "false"

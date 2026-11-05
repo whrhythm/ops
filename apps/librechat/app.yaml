@@ -37,7 +37,7 @@ data:
   CODECHAT_WORKSPACE_URL: https://platform.k3s.local:30443/internal/v1/workspace/
   NODE_EXTRA_CA_CERTS: /etc/librechat-ca/internal-ca.crt
   SEARCH: "false"
-  LIBRECHAT_CODE_BASEURL: http://codeapi-api.codeapi.svc.cluster.local:3112/v1
+  LIBRECHAT_CODE_BASEURL: http://platform-api.platform-system.svc.cluster.local:8088/internal/v1/codeapi
   CODEAPI_AUTH_PROVIDER: librechat-jwt
   CODEAPI_JWT_ALGORITHM: EdDSA
   CODEAPI_JWT_KID: starbridge-codeapi-20261105
@@ -123,7 +123,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/codechat-librechat@sha256:7f9df16bd0aac8af7f0fe46ee6f9a183e7409a6eefc91badfea6e09a89953c16
+          image: harbor.k3s.local/internal/codechat-librechat@sha256:0789ce7998da9b90287fff6eb89fb43af00cf0bbf42fa777a595371891dfef63
           ports:
             - containerPort: 3080
           envFrom:

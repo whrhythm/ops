@@ -25,7 +25,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: migrate
-          image: harbor.k3s.local/internal/platform-control@sha256:9bd8546b57a98529d2927e963380b472f00ec0544bfbb99de02aa556dfe0c557
+          image: harbor.k3s.local/internal/platform-control@sha256:d745a4140e682c629b9d1b015bf00c85a5eb9ceb904f4b66e7fb66421c228c6e
           command: [/bin/sh, -ec]
           args:
             - |
@@ -99,6 +99,7 @@ data:
         db.execute(text("GRANT SELECT ON agent_preferences TO platform_worker"))
         db.execute(text("GRANT SELECT, INSERT, UPDATE ON mcp_servers, mcp_credentials TO platform_api"))
         db.execute(text("GRANT SELECT, INSERT, UPDATE ON account_access TO platform_api"))
+        db.execute(text("GRANT SELECT, INSERT, UPDATE ON code_executions TO platform_api"))
         db.execute(text("GRANT SELECT ON account_access TO platform_worker"))
         db.execute(text("GRANT SELECT ON mcp_servers, mcp_credentials TO platform_worker"))
         db.execute(text("GRANT SELECT, INSERT, UPDATE ON capacity_accounts, capacity_orders, storage_measurements TO platform_api"))

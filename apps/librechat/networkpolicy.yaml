@@ -23,12 +23,12 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: codeapi
+              kubernetes.io/metadata.name: platform-system
           podSelector:
             matchLabels:
-              app.kubernetes.io/component: api
+              app.kubernetes.io/name: platform-api
       ports:
-        - {protocol: TCP, port: 3112}
+        - {protocol: TCP, port: 8088}
     - to:
         - podSelector:
             matchLabels: {app: librechat-mongo}
