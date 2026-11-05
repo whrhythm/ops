@@ -21,6 +21,15 @@ spec:
         - {protocol: TCP, port: 3080}
   egress:
     - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: codeapi
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: api
+      ports:
+        - {protocol: TCP, port: 3112}
+    - to:
         - podSelector:
             matchLabels: {app: librechat-mongo}
       ports:

@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: codeapi
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/whrhythm/ops.git
+    targetRevision: main
+    path: apps/codeapi/chart
+    helm:
+      releaseName: codeapi
+      valueFiles: [../values.yaml]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: codeapi
+  syncPolicy:
+    automated: {selfHeal: true, prune: true}
+    syncOptions: [CreateNamespace=true]

@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: codeapi-redis
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: longhorn
+  resources:
+    requests: {storage: 1Gi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: codeapi-redis
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: codeapi-redis}
+  template:
+    metadata:
+      labels: {app: codeapi-redis}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsUser: 999, runAsGroup: 999, fsGroup: 999, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: redis
+          image: redis:7.4.7-alpine
+          command: [sh, -ec]
+          args: ['umask 077; printf "requirepass %s\nappendonly yes\ndir /data\nmaxmemory 192mb\nmaxmemory-policy noeviction\n" "$REDIS_PASSWORD" > /tmp/redis.conf; exec redis-server /tmp/redis.conf']
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: codeapi-secrets, key: redis-password}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          ports: [{containerPort: 6379}]
+          readinessProbe: {tcpSocket: {port: 6379}, periodSeconds: 5}
+          livenessProbe: {tcpSocket: {port: 6379}, periodSeconds: 20}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: codeapi-redis}
+        - name: tmp
+          emptyDir: {sizeLimit: 16Mi}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: codeapi-redis}
+spec:
+  selector: {app: codeapi-redis}
+  ports: [{port: 6379, targetPort: 6379}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: codeapi-redis}
+spec:
+  podSelector:
+    matchLabels: {app: codeapi-redis}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - {key: app.kubernetes.io/component, operator: In, values: [api, service-worker, file-server, egress-gateway, tool-call-server]}
+      ports: [{protocol: TCP, port: 6379}]
+  egress: []
