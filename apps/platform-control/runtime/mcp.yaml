@@ -73,7 +73,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: gateway
-          image: harbor.k3s.local/internal/platform-control@sha256:9d62f3c226107742e737e8285670886acc56431164e031a98a3d4d43d6c157c3
+          image: harbor.k3s.local/internal/platform-control@sha256:1adab5fc0343e21d7ebff6e391462f9f9644270a6c81cdef3b44276e2331b323
           command: [python, -m, control_plane.mcp_gateway]
           env:
             - name: PLATFORM_MCP_GATEWAY_TOKEN

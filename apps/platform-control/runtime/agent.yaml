@@ -49,7 +49,7 @@ spec:
   validations:
     - expression: "request.namespace.matches('^codechat-user-[0-9a-f]{40}$') && variables.job.metadata.name.matches('^agent-[0-9a-f-]{36}$') && variables.job.metadata.labels['codechat.io/agent-command'] == 'true'"
       message: Agent jobs must belong to a recorded personal workspace.
-    - expression: "variables.pod.runtimeClassName == 'kata-qemu-runtime-rs' && variables.pod.automountServiceAccountToken == false && variables.pod.restartPolicy == 'Never' && variables.job.spec.backoffLimit == 0 && variables.job.spec.activeDeadlineSeconds <= 600 && variables.job.spec.ttlSecondsAfterFinished <= 600"
+    - expression: "variables.pod.runtimeClassName == 'kata-qemu-runtime-rs' && variables.pod.automountServiceAccountToken == false && variables.pod.restartPolicy == 'Never' && variables.job.spec.backoffLimit == 0 && variables.job.spec.activeDeadlineSeconds <= 1800 && variables.job.spec.ttlSecondsAfterFinished <= 600"
       message: Agent commands require Kata, no service identity, no replay and bounded cleanup.
     - expression: "(!has(variables.pod.hostNetwork) || !variables.pod.hostNetwork) && (!has(variables.pod.hostPID) || !variables.pod.hostPID) && (!has(variables.pod.hostIPC) || !variables.pod.hostIPC) && (!has(variables.pod.initContainers) || size(variables.pod.initContainers) == 0) && size(variables.pod.containers) == 1"
       message: Agent commands cannot join host namespaces or add auxiliary containers.
@@ -116,7 +116,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: worker
-          image: harbor.k3s.local/internal/platform-control@sha256:0e8fb85090c3f2fa64146c282619e8106a04ce23c6a5e86d41da3507798d8a13
+          image: harbor.k3s.local/internal/platform-control@sha256:1adab5fc0343e21d7ebff6e391462f9f9644270a6c81cdef3b44276e2331b323
           command: [python, -m, control_plane.agent_worker]
           env:
             - {name: PLATFORM_DATABASE_POOL_SIZE, value: "2"}
