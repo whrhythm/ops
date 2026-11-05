@@ -18,7 +18,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: billing
-          image: harbor.k3s.local/internal/platform-control@sha256:94e04c4c8772b4e5c10ef14d95957c6f611b573f91cbb48d407bda5f245adb81
+          image: harbor.k3s.local/internal/platform-control@sha256:bf35aea502c2690c13ae9d53dc6bbf6bd82d515f73e6deb86bf1721b21bd4560
           command: [python, -m, control_plane.model_billing_controller]
           env:
             - {name: PLATFORM_DATABASE_POOL_SIZE, value: "1"}
