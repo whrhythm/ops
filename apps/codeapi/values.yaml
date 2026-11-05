@@ -4,7 +4,7 @@
   "executionProfile": "default",
   "executionManifest": {
     "privateKey": "managed-by-codeapi-secrets",
-    "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAmGj8b1ZgdapudbJjvsnuj9ch+iXhuJ9xVa1PzGir4Bo=\n-----END PUBLIC KEY-----\n"
+    "publicKey": "MCowBQYDK2VwAyEAmGj8b1ZgdapudbJjvsnuj9ch+iXhuJ9xVa1PzGir4Bo="
   },
   "api": {
     "replicaCount": 1,
