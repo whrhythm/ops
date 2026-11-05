@@ -78,14 +78,6 @@ spec:
     matchLabels: {app.kubernetes.io/name: agent-worker}
   policyTypes: [Egress]
   egress:
-    # mcp.deepwiki.com IPv4 answers verified from this cluster on 2026-11-05.
-    # Fail closed on DNS changes; review and update these /32s through GitOps.
-    # The MCP transport additionally pins DNS and verifies the exact hostname/TLS.
-    - to:
-        - ipBlock: {cidr: 32.186.91.142/32}
-        - ipBlock: {cidr: 32.191.178.174/32}
-        - ipBlock: {cidr: 35.80.103.206/32}
-      ports: [{protocol: TCP, port: 443}]
     - to: [{ipBlock: {cidr: 192.168.110.126/32}}]
       ports: [{protocol: TCP, port: 6443}, {protocol: TCP, port: 30443}]
     - to: [{ipBlock: {cidr: 10.43.0.1/32}}]
@@ -124,7 +116,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: worker
-          image: harbor.k3s.local/internal/platform-control@sha256:a6964652839f7a4ef05b7ddc599a9488e4bd228b8faddf3d02380ff7814de1d4
+          image: harbor.k3s.local/internal/platform-control@sha256:9d62f3c226107742e737e8285670886acc56431164e031a98a3d4d43d6c157c3
           command: [python, -m, control_plane.agent_worker]
           env:
             - {name: PLATFORM_DATABASE_POOL_SIZE, value: "2"}
@@ -133,6 +125,7 @@ spec:
             - configMapRef: {name: platform-config}
             - secretRef: {name: platform-db-worker}
             - secretRef: {name: platform-workspace-encryption}
+            - secretRef: {name: platform-mcp-secrets}
           resources:
             requests: {cpu: 100m, memory: 512Mi}
             limits: {cpu: "1", memory: 2Gi}
