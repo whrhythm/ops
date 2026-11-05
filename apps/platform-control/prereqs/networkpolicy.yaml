@@ -4,7 +4,9 @@ metadata:
   name: platform-control
   namespace: platform-system
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - {key: app.kubernetes.io/name, operator: NotIn, values: [mcp-gateway]}
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
