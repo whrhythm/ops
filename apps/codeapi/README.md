@@ -6,6 +6,7 @@
 
 - 用户浏览器只访问 LibreChat。LibreChat 签发最长 300 秒、绑定用户的 Ed25519 JWT；CodeAPI 只保存公钥。禁止 LOCAL_MODE 和匿名执行。
 - API、队列、文件服务、执行调度、工具服务、出口网关和执行器分别运行。执行器使用 `/dev/kvm` + libkrun 微虚拟机及 NsJail；不要求关闭现有 OpenHands 的 Kata 隔离。
+- 专用设备插件发布 `starbridge.internal/kvm`，执行器请求一个设备份额以获得设备访问权限，无需特权模式；仅挂载设备文件不足以授予 cgroup 设备权限。
 - 执行器只能连接受控出口网关；无平台、MinIO、Redis 管理凭据，也不挂载用户个人空间。
 - 这是聊天代码块的临时计算环境。OpenHands 编程仍使用个人工作空间。二者不自动共享文件；不要把临时执行产物当作持久项目文件。
 - 文件保存在共享 MinIO 的独立 `starbridge-codeapi-files` bucket；仅该 bucket 的运行身份有权限。总容量上限 2 GiB，产物按一天生命周期到期清理。MinIO 生命周期为异步清理，并非精确 24 小时删除。
