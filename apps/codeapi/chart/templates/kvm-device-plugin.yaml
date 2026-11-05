@@ -1,0 +1,48 @@
+# Dedicated KVM device allocator. No cluster API credentials or privileged mode.
+# Source: https://github.com/squat/generic-device-plugin
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: codeapi-kvm-device-plugin
+spec:
+  selector:
+    matchLabels: {app: codeapi-kvm-device-plugin}
+  template:
+    metadata:
+      labels: {app: codeapi-kvm-device-plugin}
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector: {kubernetes.io/hostname: edge}
+      containers:
+        - name: kvm
+          image: squat/generic-device-plugin@sha256:8dc84958301f054bf72d9753a7a2c9af3d6642a9844b34d1171b3f2cdb4a15f6
+          args:
+            - --domain=starbridge.internal
+            - --device
+            - '{"name":"kvm","groups":[{"count":2,"paths":[{"path":"/dev/kvm"}]}]}'
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+            seccompProfile: {type: RuntimeDefault}
+          resources:
+            requests: {cpu: 20m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+          volumeMounts:
+            - {name: plugins, mountPath: /var/lib/kubelet/device-plugins}
+            - {name: kvm, mountPath: /dev/kvm, readOnly: true}
+      volumes:
+        - name: plugins
+          hostPath: {path: /var/lib/kubelet/device-plugins, type: Directory}
+        - name: kvm
+          hostPath: {path: /dev/kvm, type: CharDevice}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: codeapi-kvm-device-plugin}
+spec:
+  podSelector:
+    matchLabels: {app: codeapi-kvm-device-plugin}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: []

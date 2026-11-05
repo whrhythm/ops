@@ -30,7 +30,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: harbor.k3s.local/internal/platform-control@sha256:864419863258efe2aea5fa96989575e09da8107b5a5ab38343742bb91fcd459c
+          image: harbor.k3s.local/internal/platform-control@sha256:9bd8546b57a98529d2927e963380b472f00ec0544bfbb99de02aa556dfe0c557
           ports:
             - name: http
               containerPort: 8088
@@ -43,6 +43,8 @@ spec:
                 name: platform-model-provisioning
             - secretRef:
                 name: platform-mcp-secrets
+            - secretRef:
+                name: platform-identity-directory
           startupProbe:
             httpGet:
               path: /healthz

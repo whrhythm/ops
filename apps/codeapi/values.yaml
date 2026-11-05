@@ -72,6 +72,10 @@
       "otherConcurrency": 1,
       "jobTimeout": 25000
     },
+    "kvmDevicePlugin": {
+      "enabled": true,
+      "resourceName": "starbridge.internal/kvm"
+    },
     "sandbox": {
       "maxConcurrentJobs": 2,
       "executeBodyLimit": "4mb",
