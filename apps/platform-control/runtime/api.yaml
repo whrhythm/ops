@@ -14,7 +14,7 @@ spec:
   template:
     metadata:
       annotations:
-        codechat.io/config-revision: ai-projects-20261106-1
+        codechat.io/config-revision: ai-projects-20261106-2
       labels:
         app.kubernetes.io/name: platform-api
         codechat.io/workspace-client: "true"
