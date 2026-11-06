@@ -154,7 +154,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: controller
-          image: harbor.k3s.local/internal/platform-control@sha256:bf35aea502c2690c13ae9d53dc6bbf6bd82d515f73e6deb86bf1721b21bd4560
+          image: harbor.k3s.local/internal/platform-control@sha256:e87c5a25f027db6b98f0d1e17565785139963b50c09139269379a33037013eae
           command: [python, -m, control_plane.workspace_controller]
           env:
             - {name: PLATFORM_DATABASE_POOL_SIZE, value: "1"}
