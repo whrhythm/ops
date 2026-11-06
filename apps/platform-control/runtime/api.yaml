@@ -13,6 +13,8 @@ spec:
       app.kubernetes.io/name: platform-api
   template:
     metadata:
+      annotations:
+        codechat.io/config-revision: versions-20261106-1
       labels:
         app.kubernetes.io/name: platform-api
         codechat.io/workspace-client: "true"
