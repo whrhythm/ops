@@ -24,12 +24,22 @@ LibreChat 原生 Projects 用于整理聊天，与持久个人文件空间不同
 
 ## 部署与配置
 
-- ArgoCD 应用：`librechat`；平台后端：`platform-control`；当前地址解析到 `192.168.10.30`。
+- ArgoCD 应用：`librechat`；平台后端：`platform-control`；当前主机地址 `192.168.110.126`，浏览器域名需解析到可达的集群地址。
 - Authentik `platform` OIDC 客户端使用 PKCE；浏览器访问 chat 与 authentik 两个域名及端口 30443，须正常验证内部 CA 证书。
 - 文件与应用使用 LibreChat 同源接口，后端转发平台 API；普通用户操作不再依赖浏览器直接请求 platform 域名。
 - `librechat.yaml` 中的 `codechat.capabilities` 显式启用能力入口。chat/coding 路由别名需与平台 `PLATFORM_CAPABILITY_*` 配置一致；真实聊天模型由平台允许列表验证，旧 OpenHands 会话保持兼容。
 - 安装前创建 `librechat-secrets`、`librechat-ca`、`librechat-codechat-provisioning`。控制面仓库的 `scripts/bootstrap_librechat.py`、`scripts/bootstrap_model_credentials.py` 复用已有密钥，不自动轮换。Secret 不写入 Git。
 - MongoDB、LibreChat 上传目录与个人工作卷是不同数据，应一并备份并演练恢复。当前单节点不提供高可用。
-- 不启用 Meilisearch、RAG、Dify 或 LibreChat 本地密码注册。当前面向内部可信用户；注册邮箱验证及公网反滥用仍待配置。
+- 不启用 Meilisearch、Dify 或 LibreChat 本地密码注册。P1-02 已接入专属项目知识检索服务，未启用原生通用 RAG。当前面向内部可信用户；注册邮箱验证及公网反滥用仍待配置。
+
+## P1-03 私人固定试用
+
+2026-11-07：`aiProjects.trialsEnabled: true` 与控制面 `PLATFORM_AI_TRIALS_ENABLED=true` 配套启用。用户从「我的空间 → 项目 → 配置与预览」保存草稿、打开固定版本聊天、记录人工验收。仅使用所有者本人额度，未开放正式发布或受邀代付。
+
+控制面迁移 `0025_ai_project_trials` 先于 LibreChat 镜像上线；API 角色对四张新表仅授予 SELECT/INSERT/UPDATE。模型、指令、内置答复规范和知识修订被固定，权限撤销仍实时生效。默认每项目 50 个试用，输出上限 4096 tokens；由控制面运行配置调整。
+
+暂停入口应同时关闭前后端试用开关并保留数据；已有试用记录时不可降级删除新表。回滚执行镜像前应保持快照校验与迁移兼容，不能回退为可任意覆盖配置的原生 Agent 执行。当前 API 镜像为 `0.1.0-trials-20261107.1`，LibreChat 为 `0.8.9-trials-20261107.7`，实际清单固定镜像摘要。
+
+使用手册、重复验收与已知边界见 [P1-03 交付记录](https://github.com/whrhythm/platform-control/blob/feature/p1-ai-apps/docs/p1-trials.md)。
 
 详细用户手册、编程协议及验收记录见 [platform-control 文档](https://github.com/whrhythm/platform-control/tree/main/docs)。自动模型开通运维见 [MODEL_KEY_GUIDE.md](MODEL_KEY_GUIDE.md)。
