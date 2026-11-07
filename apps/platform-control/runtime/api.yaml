@@ -14,7 +14,7 @@ spec:
   template:
     metadata:
       annotations:
-        codechat.io/config-revision: trials-20261107-1
+        codechat.io/config-revision: releases-20261107-1
       labels:
         app.kubernetes.io/name: platform-api
         codechat.io/workspace-client: "true"
@@ -32,7 +32,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: harbor.k3s.local/internal/platform-control@sha256:b1370fdabe885ff0994924d5b450fb3cc19018b8895ae19c247c4dc6f68bee27
+          image: harbor.k3s.local/internal/platform-control@sha256:1a4d5dfd2cc07cd5b6eb74885f642911cf26307fedb33696253e638135a5646a
           ports:
             - name: http
               containerPort: 8088
