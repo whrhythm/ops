@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: knowledge
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/whrhythm/ops.git
+    targetRevision: main
+    path: apps/knowledge
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: knowledge
+  syncPolicy:
+    automated: {selfHeal: true, prune: true}
+    syncOptions: [CreateNamespace=true]

@@ -1,0 +1,52 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: knowledge-api}
+spec:
+  podSelector: {matchLabels: {app: knowledge-api}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: platform-system}}
+          podSelector:
+            matchExpressions: [{key: app.kubernetes.io/name, operator: In, values: [platform-api, knowledge-worker]}]
+      ports: [{protocol: TCP, port: 8000}]
+  egress:
+    - to: [{podSelector: {matchLabels: {app: knowledge-postgres}}}]
+      ports: [{protocol: TCP, port: 5432}]
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: knowledge-postgres}
+spec:
+  podSelector: {matchLabels: {app: knowledge-postgres}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions: [{key: app, operator: In, values: [knowledge-api, knowledge-schema]}]
+      ports: [{protocol: TCP, port: 5432}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: knowledge-schema}
+spec:
+  podSelector: {matchLabels: {app: knowledge-schema}}
+  policyTypes: [Egress]
+  egress:
+    - to: [{podSelector: {matchLabels: {app: knowledge-postgres}}}]
+      ports: [{protocol: TCP, port: 5432}]
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]

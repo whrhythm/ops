@@ -1,0 +1,129 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: knowledge-postgres
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: longhorn
+  resources: {requests: {storage: 4Gi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: knowledge-postgres}
+spec:
+  selector: {app: knowledge-postgres}
+  ports: [{name: postgres, port: 5432, targetPort: 5432}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: knowledge-postgres}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: knowledge-postgres}}
+  template:
+    metadata: {labels: {app: knowledge-postgres}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsUser: 999, runAsGroup: 999, fsGroup: 999, runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: postgres
+          image: harbor.k3s.local/internal/platform-knowledge-pg@sha256:a17b491c76e1b3938395ed0dbcb98d71a69b40556a6c2d6296ed2b460c59056d
+          env:
+            - {name: POSTGRES_DB, value: knowledge}
+            - {name: POSTGRES_USER, value: knowledge_admin}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: knowledge-postgres, key: password}}
+          ports: [{containerPort: 5432}]
+          readinessProbe: {exec: {command: [pg_isready, -U, knowledge_admin, -d, knowledge]}, periodSeconds: 5}
+          resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {cpu: 500m, memory: 1Gi}}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}, {name: run, mountPath: /var/run/postgresql}]
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: knowledge-postgres}
+        - name: run
+          emptyDir: {sizeLimit: 16Mi}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: knowledge-schema}
+data:
+  migrate.py: |
+    import os, psycopg
+    from psycopg import sql
+    with psycopg.connect(os.environ['KNOWLEDGE_ADMIN_URL'], connect_timeout=10) as db:
+        db.execute('CREATE EXTENSION IF NOT EXISTS vector')
+        db.execute('CREATE TABLE IF NOT EXISTS knowledge_revisions(scope uuid NOT NULL, revision uuid NOT NULL, digest text NOT NULL, deleted boolean NOT NULL, source_bytes bigint NOT NULL, index_bytes bigint NOT NULL, chunk_count integer NOT NULL, PRIMARY KEY(scope, revision))')
+        db.execute('CREATE TABLE IF NOT EXISTS knowledge_chunks(scope uuid NOT NULL, revision uuid NOT NULL, ordinal integer NOT NULL, filename text NOT NULL, line integer NOT NULL, content text NOT NULL, embedding vector(512) NOT NULL, PRIMARY KEY(scope, revision, ordinal), FOREIGN KEY(scope,revision) REFERENCES knowledge_revisions(scope,revision))')
+        if not db.execute("SELECT 1 FROM pg_roles WHERE rolname='knowledge_api'").fetchone():
+            db.execute(sql.SQL('CREATE ROLE knowledge_api LOGIN PASSWORD {}').format(sql.Literal(os.environ['KNOWLEDGE_APP_PASSWORD'])))
+        db.execute('REVOKE CREATE ON SCHEMA public FROM PUBLIC')
+        db.execute('GRANT USAGE ON SCHEMA public TO knowledge_api')
+        db.execute('GRANT SELECT, INSERT, UPDATE, DELETE ON knowledge_revisions, knowledge_chunks TO knowledge_api')
+    print('knowledge schema ready')
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: knowledge-schema
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 180
+  template:
+    metadata: {labels: {app: knowledge-schema}}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext: {runAsUser: 10001, runAsGroup: 10001, runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: migrate
+          image: harbor.k3s.local/internal/platform-knowledge@sha256:d611310195c5e60e33b9e6e6554a04fdb8752cad90788b15d84401117e57fe10
+          command: [python, /schema/migrate.py]
+          envFrom: [{secretRef: {name: knowledge-migrator}}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: 250m, memory: 256Mi}}
+          volumeMounts: [{name: schema, mountPath: /schema, readOnly: true}]
+      volumes: [{name: schema, configMap: {name: knowledge-schema}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledge-api
+  annotations: {argocd.argoproj.io/sync-wave: "2"}
+spec:
+  selector: {app: knowledge-api}
+  ports: [{name: http, port: 8000, targetPort: 8000}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knowledge-api
+  annotations: {argocd.argoproj.io/sync-wave: "2"}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: knowledge-api}}
+  template:
+    metadata: {labels: {app: knowledge-api}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsUser: 10001, runAsGroup: 10001, runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: api
+          image: harbor.k3s.local/internal/platform-knowledge@sha256:d611310195c5e60e33b9e6e6554a04fdb8752cad90788b15d84401117e57fe10
+          envFrom: [{secretRef: {name: knowledge-service}}]
+          ports: [{containerPort: 8000}]
+          startupProbe: {httpGet: {path: /health, port: 8000}, periodSeconds: 3, failureThreshold: 40}
+          readinessProbe: {httpGet: {path: /health, port: 8000}, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /health, port: 8000}, periodSeconds: 20, failureThreshold: 3}
+          resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {cpu: "1", memory: 2Gi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]
