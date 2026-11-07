@@ -58,6 +58,7 @@ data:
       runCode: true
     aiProjects:
       knowledgeEnabled: true
+      trialsEnabled: true
       requestTimeoutMs: 35000
     codechat:
       filePreviewMaxBytes: 1048576
@@ -126,7 +127,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/codechat-librechat@sha256:183034bebfed14bfe176a46d8608358f28249e8b4d4b2c989c01cff5b4618d9d
+          image: harbor.k3s.local/internal/codechat-librechat@sha256:4526c175b82ef5f9ec02873a4c5a2fc054a797c890285fb045d83ad6d8c140d9
           ports:
             - containerPort: 3080
           envFrom:
