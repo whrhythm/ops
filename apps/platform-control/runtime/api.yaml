@@ -14,7 +14,7 @@ spec:
   template:
     metadata:
       annotations:
-        codechat.io/config-revision: ai-projects-20261106-2
+        codechat.io/config-revision: knowledge-20261107-2
       labels:
         app.kubernetes.io/name: platform-api
         codechat.io/workspace-client: "true"
@@ -32,7 +32,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: harbor.k3s.local/internal/platform-control@sha256:b6c6b599856bf33115a3338873a00bc50756746375a51c089ab34bca32ed0daa
+          image: harbor.k3s.local/internal/platform-control@sha256:8ce7f2730ea7f67f06697f5a042331d08a058a7203d706c2615788e2132d44ec
           ports:
             - name: http
               containerPort: 8088
@@ -47,6 +47,8 @@ spec:
                 name: platform-mcp-secrets
             - secretRef:
                 name: platform-identity-directory
+            - secretRef:
+                name: platform-knowledge
           startupProbe:
             httpGet:
               path: /healthz

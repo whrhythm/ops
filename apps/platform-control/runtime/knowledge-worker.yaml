@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knowledge-worker
+  namespace: platform-system
+  annotations: {argocd.argoproj.io/sync-wave: "2"}
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels: {app.kubernetes.io/name: knowledge-worker}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: knowledge-worker}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: worker
+          image: harbor.k3s.local/internal/platform-control@sha256:8ce7f2730ea7f67f06697f5a042331d08a058a7203d706c2615788e2132d44ec
+          command: [python, -m, control_plane.knowledge_worker]
+          env:
+            - {name: PLATFORM_DATABASE_POOL_SIZE, value: "1"}
+            - {name: PLATFORM_DATABASE_POOL_OVERFLOW, value: "1"}
+          envFrom:
+            - configMapRef: {name: platform-config}
+            - secretRef: {name: platform-db-worker}
+            - secretRef: {name: platform-knowledge}
+          resources: {requests: {cpu: 50m, memory: 96Mi}, limits: {cpu: 250m, memory: 256Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: ca, mountPath: /etc/platform-ca, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: ca
+          configMap: {name: platform-ca}
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: project-knowledge-client
+  namespace: platform-system
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: app.kubernetes.io/name, operator: In, values: [platform-api, knowledge-worker]}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: knowledge}}
+          podSelector: {matchLabels: {app: knowledge-api}}
+      ports: [{protocol: TCP, port: 8000}]
