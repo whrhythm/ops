@@ -32,7 +32,7 @@ LibreChat 原生 Projects 用于整理聊天，与持久个人文件空间不同
 - MongoDB、LibreChat 上传目录与个人工作卷是不同数据，应一并备份并演练恢复。当前单节点不提供高可用。
 - 不启用 Meilisearch、Dify 或 LibreChat 本地密码注册。P1-02 已接入专属项目知识检索服务，未启用原生通用 RAG。当前面向内部可信用户；注册邮箱验证及公网反滥用仍待配置。
 
-## P1-03 私人固定试用
+## P1-03 私人固定试用（阶段记录）
 
 2026-11-07：`aiProjects.trialsEnabled: true` 与控制面 `PLATFORM_AI_TRIALS_ENABLED=true` 配套启用。用户从「我的空间 → 项目 → 配置与预览」保存草稿、打开固定版本聊天、记录人工验收。仅使用所有者本人额度，未开放正式发布或受邀代付。
 
@@ -41,5 +41,15 @@ LibreChat 原生 Projects 用于整理聊天，与持久个人文件空间不同
 暂停入口应同时关闭前后端试用开关并保留数据；已有试用记录时不可降级删除新表。回滚执行镜像前应保持快照校验与迁移兼容，不能回退为可任意覆盖配置的原生 Agent 执行。当前 API 镜像为 `0.1.0-trials-20261107.1`，LibreChat 为 `0.8.9-trials-20261107.7`，实际清单固定镜像摘要。
 
 使用手册、重复验收与已知边界见 [P1-03 交付记录](https://github.com/whrhythm/platform-control/blob/feature/p1-ai-apps/docs/p1-trials.md)。
+
+## P1-04 正式发布与受邀代付
+
+`aiProjects.releasesEnabled: true` 与控制面 `PLATFORM_AI_RELEASES_ENABLED=true` 配套启用，后端要求迁移 `0026_ai_releases`。正式发布从“我的空间 → 项目 → 发布与成员”进入；成员通过应用链接核验身份后使用原生聊天。邀请使用固定成员 ID 或已验证邮箱，不能以未验证邮箱授权。普通聊天、私人试用仍使用原来的个人费用规则。
+
+正式调用仅在服务端解析固定快照和创建者付款身份；成员不会收到创建者密钥。LiteLLM 归属字段存入 `metadata.spend_logs_metadata`；实际消费以 LiteLLM 为准，应用预算估算不能重复记账。预算不足为终止错误，不按临时限流自动重试。未知结果保留预占、不自动重放，人工核验工作台尚待 P1-05。
+
+关闭发布功能须关闭前后端开关并保留六张新表、既有快照与会话；不能降级到不校验固定版本/成员的原生执行路径。停用单个应用优先在产品“发布与成员”中操作，不删除资料。镜像摘要以 `app.yaml` 和控制面运行清单为准。
+
+三轮 UI、权限撤销、创建者扣费与限制见 [P1-04 交付记录](https://github.com/whrhythm/platform-control/blob/feature/p1-ai-apps/docs/p1-releases.md)。当前仍为内部合成资料测试，不能据此宣布公网或商业可用。
 
 详细用户手册、编程协议及验收记录见 [platform-control 文档](https://github.com/whrhythm/platform-control/tree/main/docs)。自动模型开通运维见 [MODEL_KEY_GUIDE.md](MODEL_KEY_GUIDE.md)。

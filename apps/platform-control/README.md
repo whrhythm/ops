@@ -87,3 +87,12 @@ kubectl -n platform-system logs deployment/platform-worker --tail=50
 API `/healthz` 是存活检查，`/readyz` 验证数据库连接；不带 token 的 `/v1/me` 应返回 401。正常登录后应能创建个人空间、项目和资源申请，worker 将 requested 改为 planned，并返回 `executable=false`。
 
 回退时恢复前一镜像 digest 和对应配置；数据库迁移需独立评估，不能为回滚镜像自动降级或删除平台数据库。删除平台 Application 不会自动删除外部数据库与 Secret；Namespace 标记为不自动剪除。APISIX HTTPS 与 Authentik 新 provider 的回退要分别恢复对应 Git 提交。
+## P1-04 运行补充（2026-11-07）
+
+正式 AI 应用发布要求 API 与迁移镜像一致、数据库 revision `0026_ai_releases`；六张新增表的应用角色授权见 `runtime/migration.yaml`。此轮不改 CapacityPlan schema，现有 agent-worker/workspace-controller 不读新表，无需为本轮发布迁移其策略。运行镜像摘要以 GitOps 清单为准。
+
+`runtime/config.yaml` 新增 `PLATFORM_AI_RELEASES_ENABLED`、`LIMIT`（50 版本/项目）、`MEMBER_LIMIT`（20）、`RUN_SECONDS`（120）、`STEPS`（4）和 `INPUT_BYTES`（64000），后五项均以 `PLATFORM_AI_RELEASES_` 为前缀。应用美元预算由创建者在产品设置，应用预算不等于账户充值。模型调用每一步仍核验身份、访问、有效模型和预算。
+
+模型明确拒绝释放预占；超时、断流、缺少回执或进程退出留下的 reserved/uncertain 不能直接退款或自动重放。预算不足在调用模型前终止；核验后台尚待 P1-05，不通过手工 SQL 伪造已完成。停用保留用户资料与会话，降低预算也不删除数据。
+
+发布前同主机数据库备份位于 `/home/edge/platform-backups/20261107-releases/platform-control-before-releases.dump`，已确认可读取目录；不是独立灾备。回退镜像须保留迁移与新版本授权校验，不能向旧执行路径开放已发布入口。详见 [P1-04 使用与验收](https://github.com/whrhythm/platform-control/blob/feature/p1-ai-apps/docs/p1-releases.md)。
