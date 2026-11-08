@@ -141,7 +141,7 @@ spec:
   template:
     metadata:
       annotations:
-        codechat.io/config-revision: membership-20261103-2
+        codechat.io/config-revision: project-root-cleanup-20261108
       labels:
         app.kubernetes.io/name: workspace-controller
         codechat.io/workspace-client: "true"
