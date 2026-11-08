@@ -25,7 +25,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: migrate
-          image: harbor.k3s.local/internal/platform-control@sha256:dff40cda37da5ccb41c917422e7464ab854111ab51277af4aaa8adf060d94804
+          image: harbor.k3s.local/internal/platform-control@sha256:7a65b9a90a959df82464061d883f46ae932bf9921f88ecfe7c02f28220f14a0d
           command: [/bin/sh, -ec]
           args:
             - |
@@ -89,8 +89,8 @@ data:
         db.execute(text("GRANT SELECT, INSERT, UPDATE ON ai_project_bindings TO platform_api"))
         db.execute(text("GRANT SELECT, INSERT, UPDATE ON ai_project_drafts, ai_project_trials, ai_trial_sessions, ai_trial_runs TO platform_api"))
         db.execute(text("GRANT SELECT, INSERT, UPDATE ON ai_applications, ai_releases, ai_app_members, ai_app_entries, ai_app_runs, ai_app_calls TO platform_api"))
-        db.execute(text("GRANT SELECT, INSERT, UPDATE ON project_knowledge TO platform_api"))
-        db.execute(text("GRANT SELECT, UPDATE ON project_knowledge, ai_project_bindings TO platform_worker"))
+        db.execute(text("GRANT SELECT, INSERT, UPDATE ON project_knowledge, knowledge_libraries TO platform_api"))
+        db.execute(text("GRANT SELECT, UPDATE ON project_knowledge, knowledge_libraries, ai_project_bindings TO platform_worker"))
         db.execute(text("GRANT SELECT, INSERT, UPDATE ON business_templates, payment_receipts TO platform_api"))
         db.execute(text("GRANT SELECT, INSERT, UPDATE ON workspace_provisioning_intents TO platform_api"))
         db.execute(text("GRANT SELECT ON workspace_volume_bindings, workspace_file_services TO platform_api"))
