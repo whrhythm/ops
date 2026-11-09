@@ -75,6 +75,7 @@ data:
         enabled: true
       capabilities:
         enabled: true
+        projectDevelopment: true
         endpoint: LiteLLM
         chatRoute: codechat-chat
         codingRoute: codechat-coding
@@ -134,7 +135,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/codechat-librechat@sha256:c01cd24f2813262faf62d8eb584c108e112d336bd9f2b417801bca866008c8c3
+          image: harbor.k3s.local/internal/codechat-librechat@sha256:a29f140da4526a404902e39e65bf0d39dbd115b7994190ed6c10376252c21c63
           ports:
             - containerPort: 3080
           envFrom:
