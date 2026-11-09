@@ -58,7 +58,7 @@ data:
       runCode: true
     actions:
       allowedAddresses:
-        - starbridge-demo-tool.librechat.svc.cluster.local:8080
+        - starbridge-demo-tool.librechat.svc.cluster.local:80
     aiProjects:
       knowledgeEnabled: true
       trialsEnabled: true
@@ -119,6 +119,8 @@ spec:
     metadata:
       labels:
         app: librechat
+      annotations:
+        starbridge.local/settings-revision: support-quote-http
     spec:
       automountServiceAccountToken: false
       hostAliases:
