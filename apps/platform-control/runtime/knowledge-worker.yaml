@@ -17,7 +17,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: worker
-          image: harbor.k3s.local/internal/platform-control@sha256:7a65b9a90a959df82464061d883f46ae932bf9921f88ecfe7c02f28220f14a0d
+          image: harbor.k3s.local/internal/platform-control@sha256:d1432799f397c795e9dde6f575447cfac68435892dafebc23cdb39deb319916c
           command: [python, -m, control_plane.knowledge_worker]
           env:
             - {name: PLATFORM_DATABASE_POOL_SIZE, value: "1"}
