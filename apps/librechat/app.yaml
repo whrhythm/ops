@@ -56,6 +56,9 @@ data:
     version: 1.3.18
     interface:
       runCode: true
+    actions:
+      allowedAddresses:
+        - starbridge-demo-tool.librechat.svc.cluster.local:8080
     aiProjects:
       knowledgeEnabled: true
       trialsEnabled: true
@@ -129,7 +132,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/codechat-librechat@sha256:611410bb3cea52d26365bc536f0d4f907ebe2b4afb3750148ef6f46ebda5f6c8
+          image: harbor.k3s.local/internal/codechat-librechat@sha256:d24259a260da61accd011ba1664e3d2b2878d7b72f0cf526ddbe4509bbfbecc7
           ports:
             - containerPort: 3080
           envFrom:

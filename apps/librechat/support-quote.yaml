@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: starbridge-demo-tool
+  namespace: librechat
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: starbridge-demo-tool}
+  template:
+    metadata:
+      labels: {app: starbridge-demo-tool}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: quote
+          image: harbor.k3s.local/internal/starbridge-demo-tool@sha256:7e68d8227c6ba9102bdd63e967f2d7712961c86e73222a114e6919f709ea1d77
+          ports:
+            - {name: http, containerPort: 8080}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+          resources:
+            requests: {cpu: 10m, memory: 24Mi}
+            limits: {cpu: 100m, memory: 48Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: starbridge-demo-tool
+  namespace: librechat
+spec:
+  selector: {app: starbridge-demo-tool}
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: starbridge-demo-tool
+  namespace: librechat
+spec:
+  podSelector:
+    matchLabels: {app: starbridge-demo-tool}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app: librechat}
+      ports:
+        - {protocol: TCP, port: 8080}
