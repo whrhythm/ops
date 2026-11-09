@@ -1,0 +1,51 @@
+langfuse:
+  salt:
+    secretKeyRef: {name: langfuse-runtime, key: salt}
+  encryptionKey:
+    secretKeyRef: {name: langfuse-runtime, key: encryption}
+  features:
+    signUpDisabled: true
+    telemetryEnabled: false
+  nextauth:
+    secret:
+      secretKeyRef: {name: langfuse-runtime, key: nextauth}
+  web:
+    pod:
+      additionalEnvFrom:
+        - secretRef: {name: langfuse-init}
+
+clickhouse:
+  deploy: false
+  host: langfuse-clickhouse
+  cluster:
+    enabled: false
+  auth:
+    username: langfuse
+    existingSecret: langfuse-runtime
+    existingSecretKey: clickhouse
+
+postgresql:
+  auth:
+    existingSecret: langfuse-postgresql-auth
+    secretKeys:
+      userPasswordKey: USERDB_PASSWORD
+      adminPasswordKey: POSTGRES_PASSWORD
+  storage:
+    className: longhorn
+    requestedSize: 8Gi
+
+redis:
+  auth:
+    existingSecret: langfuse-redis-auth
+    existingSecretPasswordKey: default
+  persistence:
+    storageClass: longhorn
+
+s3:
+  deploy: false
+  bucket: starbridge-langfuse
+  endpoint: http://minio.minio.svc.cluster.local:9000
+  accessKeyId:
+    secretKeyRef: {name: langfuse-s3-auth, key: accessKey}
+  secretAccessKey:
+    secretKeyRef: {name: langfuse-s3-auth, key: secretKey}
