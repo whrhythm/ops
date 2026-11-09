@@ -59,6 +59,7 @@ data:
         db.execute('CREATE EXTENSION IF NOT EXISTS vector')
         db.execute('CREATE TABLE IF NOT EXISTS knowledge_revisions(scope uuid NOT NULL, revision uuid NOT NULL, digest text NOT NULL, deleted boolean NOT NULL, source_bytes bigint NOT NULL, index_bytes bigint NOT NULL, chunk_count integer NOT NULL, PRIMARY KEY(scope, revision))')
         db.execute('CREATE TABLE IF NOT EXISTS knowledge_chunks(scope uuid NOT NULL, revision uuid NOT NULL, ordinal integer NOT NULL, filename text NOT NULL, line integer NOT NULL, content text NOT NULL, embedding vector(512) NOT NULL, PRIMARY KEY(scope, revision, ordinal), FOREIGN KEY(scope,revision) REFERENCES knowledge_revisions(scope,revision))')
+        db.execute('ALTER TABLE knowledge_revisions ADD COLUMN IF NOT EXISTS embedding_profile_id uuid')
         if not db.execute("SELECT 1 FROM pg_roles WHERE rolname='knowledge_api'").fetchone():
             db.execute(sql.SQL('CREATE ROLE knowledge_api LOGIN PASSWORD {}').format(sql.Literal(os.environ['KNOWLEDGE_APP_PASSWORD'])))
         db.execute('REVOKE CREATE ON SCHEMA public FROM PUBLIC')
@@ -85,7 +86,7 @@ spec:
       securityContext: {runAsUser: 10001, runAsGroup: 10001, runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: migrate
-          image: harbor.k3s.local/internal/platform-knowledge@sha256:d611310195c5e60e33b9e6e6554a04fdb8752cad90788b15d84401117e57fe10
+          image: harbor.k3s.local/internal/platform-knowledge@sha256:8fcbbfe09cea2cb3a79b72d957d5f32bd1633c26ea4a6d562eb5ca5bf6c7a7fa
           command: [python, /schema/migrate.py]
           envFrom: [{secretRef: {name: knowledge-migrator}}]
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
@@ -117,7 +118,7 @@ spec:
       securityContext: {runAsUser: 10001, runAsGroup: 10001, runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: api
-          image: harbor.k3s.local/internal/platform-knowledge@sha256:d611310195c5e60e33b9e6e6554a04fdb8752cad90788b15d84401117e57fe10
+          image: harbor.k3s.local/internal/platform-knowledge@sha256:8fcbbfe09cea2cb3a79b72d957d5f32bd1633c26ea4a6d562eb5ca5bf6c7a7fa
           envFrom: [{secretRef: {name: knowledge-service}}]
           ports: [{containerPort: 8000}]
           startupProbe: {httpGet: {path: /health, port: 8000}, periodSeconds: 3, failureThreshold: 40}
