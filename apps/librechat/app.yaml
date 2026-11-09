@@ -129,7 +129,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/codechat-librechat@sha256:8aecedf04c22f76166af6dd545073774b813c25997a2705903a587f1bda8bc4a
+          image: harbor.k3s.local/internal/codechat-librechat@sha256:3c618702b8a8ae1275111773ef482717cb5660a5b596384892619626217e4a7f
           ports:
             - containerPort: 3080
           envFrom:
