@@ -45,6 +45,7 @@ data:
   CODEAPI_JWT_AUDIENCE: codeapi
   CODEAPI_JWT_TTL_SECONDS: "300"
   CODEAPI_JWT_SINGLE_TENANT_ID: legacy
+  LANGFUSE_BASE_URL: http://langfuse-web.langfuse.svc.cluster.local:3000
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -56,6 +57,10 @@ data:
     version: 1.3.18
     interface:
       runCode: true
+      traceViewer:
+        enabled: true
+        showInputOutput: false
+        showToolNames: true
     actions:
       allowedAddresses:
         - starbridge-demo-tool.librechat.svc.cluster.local:80
@@ -135,7 +140,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/codechat-librechat@sha256:44d25ad8a809a6235c74aa60cba13335afba3ae9bd939b51ce56e47d319f89c6
+          image: harbor.k3s.local/internal/codechat-librechat@sha256:d370b4cd626bf55a73e0871c85d39bd06402db420b87af5209a44de94cb5aa03
           ports:
             - containerPort: 3080
           envFrom:
@@ -147,6 +152,9 @@ spec:
                 name: librechat-codechat-provisioning
             - secretRef:
                 name: librechat-codeapi
+            - secretRef:
+                name: librechat-langfuse
+                optional: true
           startupProbe:
             httpGet: {path: /health, port: 3080}
             failureThreshold: 60

@@ -21,6 +21,16 @@ spec:
         - {protocol: TCP, port: 3080}
   egress:
     - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: langfuse
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: langfuse
+              app.kubernetes.io/component: web
+      ports:
+        - {protocol: TCP, port: 3000}
+    - to:
         - podSelector:
             matchLabels: {app: starbridge-demo-tool}
       ports:
