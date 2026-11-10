@@ -14,7 +14,7 @@ spec:
   template:
     metadata:
       annotations:
-        codechat.io/config-revision: releases-20261107-1
+        codechat.io/config-revision: authoring-network-20261110-1
       labels:
         app.kubernetes.io/name: platform-api
         codechat.io/workspace-client: "true"
