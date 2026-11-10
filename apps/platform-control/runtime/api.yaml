@@ -32,7 +32,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: harbor.k3s.local/internal/platform-control@sha256:7034133a0a574dad8c59a72bb2a0a15829d2987b55f5caf7c9025fa5b1020691
+          image: harbor.k3s.local/internal/platform-control@sha256:079e1d84ae5c97d0e87b128ba5c8fa3b3b8692e1ce55643d718ab0e3e3fb0341
           ports:
             - name: http
               containerPort: 8088

@@ -25,7 +25,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: migrate
-          image: harbor.k3s.local/internal/platform-control@sha256:3c626f93a835ca7ebadb9685ff4d01c821516ff06d641f91ea6b9145fc4d4737
+          image: harbor.k3s.local/internal/platform-control@sha256:516ee977a61bf43d6e4aca0b8ef8f0bae8de448f9c61afdbed2ef14472e09d79
           command: [/bin/sh, -ec]
           args:
             - |
