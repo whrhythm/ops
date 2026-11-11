@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: project-tool-client
+  namespace: platform-system
+  annotations: {argocd.argoproj.io/sync-wave: "0"}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: codechat-project-tool-jobs
+  annotations: {argocd.argoproj.io/sync-wave: "0"}
+rules:
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get, create, delete]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [list]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [persistentvolumeclaims]
+    resourceNames: [workspace-data]
+    verbs: [get]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: codechat-project-tool-jobs
+  annotations: {argocd.argoproj.io/sync-wave: "0"}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [batch]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [jobs]
+  matchConditions:
+    - name: project-tool-client
+      expression: "request.userInfo.username == 'system:serviceaccount:platform-system:project-tool-client'"
+  variables:
+    - name: job
+      expression: "request.operation == 'DELETE' ? oldObject : object"
+    - name: pod
+      expression: "variables.job.spec.template.spec"
+    - name: tool
+      expression: "variables.pod.containers[0]"
+  validations:
+    - expression: "request.namespace.matches('^codechat-user-[0-9a-f]{40}$') && variables.job.metadata.name.matches('^project-tool-[0-9a-f]{32}$') && variables.job.metadata.labels['codechat.io/project-tool'] == 'true' && request.namespace == 'codechat-user-' + variables.job.metadata.labels['codechat.io/user-hash'] && variables.job.spec.template.metadata.labels['codechat.io/project-tool'] == 'true' && variables.job.spec.template.metadata.labels['codechat.io/user-hash'] == variables.job.metadata.labels['codechat.io/user-hash'] && variables.job.spec.template.metadata.labels['codechat.io/project-id'] == variables.job.metadata.labels['codechat.io/project-id']"
+      message: Project tools must run within their personal workspace.
+    - expression: "variables.pod.runtimeClassName == 'kata-qemu-runtime-rs' && variables.pod.automountServiceAccountToken == false && variables.pod.restartPolicy == 'Never' && variables.job.spec.backoffLimit == 0 && variables.job.spec.activeDeadlineSeconds <= 60 && variables.job.spec.ttlSecondsAfterFinished <= 60"
+      message: Project tools require isolated, bounded execution without automatic replay.
+    - expression: "(!has(variables.pod.hostNetwork) || !variables.pod.hostNetwork) && (!has(variables.pod.hostPID) || !variables.pod.hostPID) && (!has(variables.pod.hostIPC) || !variables.pod.hostIPC) && (!has(variables.pod.initContainers) || size(variables.pod.initContainers) == 0) && size(variables.pod.containers) == 1 && (!has(variables.pod.volumes) || size(variables.pod.volumes) == 0) && (!has(variables.tool.volumeMounts) || size(variables.tool.volumeMounts) == 0)"
+      message: Project tools cannot mount host data, user secrets or live source volumes.
+    - expression: "variables.pod.securityContext.runAsNonRoot == true && variables.tool.securityContext.allowPrivilegeEscalation == false && variables.tool.securityContext.readOnlyRootFilesystem == true && variables.tool.securityContext.capabilities.drop.exists(x, x == 'ALL') && (!has(variables.tool.securityContext.privileged) || !variables.tool.securityContext.privileged) && (!has(variables.tool.envFrom) || size(variables.tool.envFrom) == 0) && variables.tool.env.all(e, !has(e.valueFrom))"
+      message: Project tools cannot import Kubernetes credentials or elevate privileges.
+    - expression: "variables.tool.image.matches('^harbor[.]k3s[.]local/[a-z0-9/_-]+@sha256:[a-f0-9]{64}$')"
+      message: Project tools require immutable build artifacts.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: codechat-project-tool-jobs
+  annotations: {argocd.argoproj.io/sync-wave: "0"}
+spec:
+  policyName: codechat-project-tool-jobs
+  validationActions: [Deny]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: project-tool-client-egress
+  namespace: platform-system
+  annotations: {argocd.argoproj.io/sync-wave: "0"}
+spec:
+  podSelector:
+    matchLabels: {codechat.io/project-tool-client: "true"}
+  policyTypes: [Egress]
+  egress:
+    - to: [{ipBlock: {cidr: 192.168.110.126/32}}]
+      ports: [{protocol: TCP, port: 6443}]
+    - to: [{ipBlock: {cidr: 10.43.0.1/32}}]
+      ports: [{protocol: TCP, port: 443}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: search-gateway-project-workspaces
+  namespace: search-system
+  annotations: {argocd.argoproj.io/sync-wave: "0"}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: search-gateway}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {app.kubernetes.io/managed-by: platform-control}}
+          podSelector: {matchLabels: {codechat.io/project-tool: "true"}}
+      ports: [{protocol: TCP, port: 8080}]

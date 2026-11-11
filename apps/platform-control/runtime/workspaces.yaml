@@ -44,7 +44,7 @@ rules:
     verbs: [get, create]
   - apiGroups: [rbac.authorization.k8s.io]
     resources: [clusterroles]
-    resourceNames: [codechat-user-applications, codechat-agent-jobs]
+    resourceNames: [codechat-user-applications, codechat-agent-jobs, codechat-project-tool-jobs]
     verbs: [bind]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -79,7 +79,7 @@ spec:
       message: Personal namespaces require owner labels and restricted pod security.
     - expression: "object.kind != 'PersistentVolumeClaim' || (object.metadata.name == 'workspace-data' && object.spec.storageClassName == 'codechat-workspace-retain')"
       message: Personal storage must use the retained workspace claim.
-    - expression: "object.kind != 'RoleBinding' || (object.roleRef.kind == 'ClusterRole' && size(object.subjects) == 1 && object.subjects[0].kind == 'ServiceAccount' && object.subjects[0].namespace == 'platform-system' && ((object.roleRef.name == 'codechat-user-applications' && object.subjects[0].name == 'application-controller') || (object.roleRef.name == 'codechat-agent-jobs' && object.subjects[0].name == 'agent-worker')))"
+    - expression: "object.kind != 'RoleBinding' || (object.roleRef.kind == 'ClusterRole' && size(object.subjects) == 1 && object.subjects[0].kind == 'ServiceAccount' && object.subjects[0].namespace == 'platform-system' && ((object.roleRef.name == 'codechat-user-applications' && object.subjects[0].name == 'application-controller') || (object.roleRef.name == 'codechat-agent-jobs' && object.subjects[0].name == 'agent-worker') || (object.roleRef.name == 'codechat-project-tool-jobs' && object.subjects[0].name == 'project-tool-client')))"
       message: User delivery permissions can bind only the fixed publisher role and service account.
 ---
 apiVersion: admissionregistration.k8s.io/v1
