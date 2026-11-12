@@ -35,6 +35,7 @@ data:
   OPENID_BUTTON_LABEL: Authentik
   CODECHAT_PROVISION_URL: https://platform.k3s.local:30443/internal/v1/litellm/key
   CODECHAT_PROVISION_TIMEOUT_MS: "30000"
+  STARBRIDGE_USAGE_URL: https://platform.k3s.local:30443/internal/v1/codeapi/account-usage
   ENDPOINTS: custom
   LIBRECHAT_CODE_BASEURL: https://platform.k3s.local:30443/internal/v1/codeapi
   CODEAPI_AUTH_PROVIDER: librechat-jwt
@@ -98,7 +99,7 @@ spec:
       labels:
         app: librechat
       annotations:
-        starbridge.local/settings-revision: office-r007-20261112
+        starbridge.local/settings-revision: office-r008-20261112
     spec:
       automountServiceAccountToken: false
       hostAliases:
@@ -112,7 +113,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/starbridge-office@sha256:96cf995ee7b7bffdb5dd438d22dc0fe62fd02945a28c40352e9c2848049fe078
+          image: harbor.k3s.local/internal/starbridge-office@sha256:0251ed6c715a7b7c310b8b454e53dc737552b0c686aa33da4e09d6ffdc0b29fe
           command: [node, api/server/index.js]
           ports:
             - containerPort: 3080
