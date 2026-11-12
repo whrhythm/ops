@@ -36,6 +36,14 @@ data:
   CODECHAT_PROVISION_URL: https://platform.k3s.local:30443/internal/v1/litellm/key
   CODECHAT_PROVISION_TIMEOUT_MS: "30000"
   ENDPOINTS: custom
+  LIBRECHAT_CODE_BASEURL: https://platform.k3s.local:30443/internal/v1/codeapi
+  CODEAPI_AUTH_PROVIDER: librechat-jwt
+  CODEAPI_JWT_ALGORITHM: EdDSA
+  CODEAPI_JWT_KID: starbridge-codeapi-20261105
+  CODEAPI_JWT_ISSUER: librechat
+  CODEAPI_JWT_AUDIENCE: codeapi
+  CODEAPI_JWT_TTL_SECONDS: "300"
+  CODEAPI_JWT_SINGLE_TENANT_ID: legacy
   NODE_EXTRA_CA_CERTS: /etc/librechat-ca/internal-ca.crt
   SEARCH: "false"
 ---
@@ -49,7 +57,7 @@ data:
     version: 1.3.18
     interface:
       agents: false
-      runCode: false
+      runCode: true
       memories: false
       multiConvo: false
       prompts: false
@@ -90,7 +98,7 @@ spec:
       labels:
         app: librechat
       annotations:
-        starbridge.local/settings-revision: office-r004b-20261112
+        starbridge.local/settings-revision: office-r007-20261112
     spec:
       automountServiceAccountToken: false
       hostAliases:
@@ -104,7 +112,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/starbridge-office@sha256:89541410237060c045723b7a06b7a1c013187d0938e63e030535f6bd5ea51353
+          image: harbor.k3s.local/internal/starbridge-office@sha256:96cf995ee7b7bffdb5dd438d22dc0fe62fd02945a28c40352e9c2848049fe078
           command: [node, api/server/index.js]
           ports:
             - containerPort: 3080
@@ -115,6 +123,8 @@ spec:
                 name: librechat-secrets
             - secretRef:
                 name: librechat-codechat-provisioning
+            - secretRef:
+                name: librechat-codeapi
           startupProbe:
             httpGet: {path: /health, port: 3080}
             failureThreshold: 60
