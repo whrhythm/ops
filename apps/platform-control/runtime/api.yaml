@@ -32,9 +32,11 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: harbor.k3s.local/internal/platform-control@sha256:93df592444d07d6367cd076bc73983e083ee244ad91f970f380b5931a1d4946a
+          image: harbor.k3s.local/internal/platform-control@sha256:254230b5a4903644604620f235dcb6aa276f19f52e5504c5c70f3755b50017c3
           env:
             - name: PLATFORM_ENTERPRISE_ENABLED
+              value: "true"
+            - name: PLATFORM_ENTERPRISE_COLLABORATION_ENABLED
               value: "true"
           ports:
             - name: http
