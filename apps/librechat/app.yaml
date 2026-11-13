@@ -106,7 +106,7 @@ spec:
       labels:
         app: librechat
       annotations:
-        starbridge.local/settings-revision: office-native-python-20261113.4
+        starbridge.local/settings-revision: enterprise-e1-20261113.1
     spec:
       automountServiceAccountToken: false
       hostAliases:
@@ -120,7 +120,10 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/starbridge-office@sha256:8b8825304910c9f7c5a92ec597ded3f21bee5325de03b73fa4cf76e5f38d7ef5
+          image: harbor.k3s.local/internal/starbridge-office@sha256:f94520b8d29b7c86cc92a00a6c83968b8754ddce7a113d38d829207ec8bae0c8
+          env:
+            - name: STARBRIDGE_ENTERPRISE_ENABLED
+              value: "true"
           command: [node, api/server/index.js]
           ports:
             - containerPort: 3080
