@@ -100,7 +100,7 @@ spec:
       labels:
         app: librechat
       annotations:
-        starbridge.local/settings-revision: office-attach-20261113.1
+        starbridge.local/settings-revision: office-merge-20261113.1
     spec:
       automountServiceAccountToken: false
       hostAliases:
@@ -114,7 +114,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/starbridge-office@sha256:1c1306ee042fa12ccbb758cbf6f0caa031fb222cacac60dd5d083693e99e68e8
+          image: harbor.k3s.local/internal/starbridge-office@sha256:f11ca1f0538abadde3e53e5a9035b89fe7f6ca08776b99988162a6fa0df50165
           command: [node, api/server/index.js]
           ports:
             - containerPort: 3080
