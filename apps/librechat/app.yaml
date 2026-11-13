@@ -71,10 +71,16 @@ data:
     # LibreChat's encrypted per-user key mechanism is populated by the
     # CodeChat login callback; users cannot supply or replace this key.
     endpoints:
+      agents:
+        nativePythonCodeExecution: true
+        officeExecutionGuidance: true
+        codeApiFileReadTimeoutMs: 60000
       custom:
         - name: LiteLLM
           apiKey: user_provided
           baseURL: https://platform.k3s.local:30443/agent/v1
+          addParams:
+            parallel_tool_calls: false
           titleConvo: true
           titleModel: deepseek-v4-flash-v2
           titlePrompt: "根据对话生成简短中文标题，只返回标题。\n{convo}"
@@ -100,7 +106,7 @@ spec:
       labels:
         app: librechat
       annotations:
-        starbridge.local/settings-revision: office-merge-20261113.1
+        starbridge.local/settings-revision: office-native-python-20261113.4
     spec:
       automountServiceAccountToken: false
       hostAliases:
@@ -114,7 +120,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/starbridge-office@sha256:f11ca1f0538abadde3e53e5a9035b89fe7f6ca08776b99988162a6fa0df50165
+          image: harbor.k3s.local/internal/starbridge-office@sha256:8b8825304910c9f7c5a92ec597ded3f21bee5325de03b73fa4cf76e5f38d7ef5
           command: [node, api/server/index.js]
           ports:
             - containerPort: 3080
