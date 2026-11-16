@@ -74,6 +74,7 @@ data:
       agents:
         nativePythonCodeExecution: true
         officeExecutionGuidance: true
+        durableOfficeTasks: true
         codeApiFileReadTimeoutMs: 60000
       custom:
         - name: LiteLLM
@@ -120,7 +121,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/starbridge-office@sha256:ee79a46b917b7a8647512b6449b97c9c915049323872d4d35da73b3869ae71bc
+          image: harbor.k3s.local/internal/starbridge-office@sha256:c14e3b99e3d72e7c9839180a7727fc32d593efef7591124264f13ff26350fc05
           env:
             - name: STARBRIDGE_ENTERPRISE_ENABLED
               value: "true"
