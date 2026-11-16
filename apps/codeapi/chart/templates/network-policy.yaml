@@ -7,6 +7,7 @@ The important boundary is sandbox-runner:
   - egress-gateway delegates only to file-server and tool-call-server.
 */}}
 {{- if .Values.networkPolicy.enabled }}
+{{- $officeDispatch := and .Values.workerSandbox.enabled .Values.workerSandbox.officeExecutionDispatch.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -36,6 +37,15 @@ spec:
           port: 53
     {{- include "codeapi.otelEgress" . | nindent 4 }}
     {{- include "codeapi.redisEgress" . | nindent 4 }}
+    {{- if $officeDispatch }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "codeapi.officeDispatch.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 3114
+    {{- end }}
     - to:
         - podSelector:
             matchLabels:
@@ -50,6 +60,52 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.egressGateway.service.port }}
+{{- if $officeDispatch }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "codeapi.fullname" . }}-office-execution-dispatch
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "codeapi.officeDispatch.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "codeapi.serviceWorker.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 3114
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- include "codeapi.redisEgress" . | nindent 4 }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "codeapi.sandboxRunner.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.workerSandbox.sandbox.port }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "codeapi.egressGateway.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.egressGateway.service.port }}
+{{- end }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -67,6 +123,11 @@ spec:
         - podSelector:
             matchLabels:
               {{- include "codeapi.serviceWorker.selectorLabels" . | nindent 14 }}
+        {{- if $officeDispatch }}
+        - podSelector:
+            matchLabels:
+              {{- include "codeapi.officeDispatch.selectorLabels" . | nindent 14 }}
+        {{- end }}
       ports:
         - protocol: TCP
           port: {{ .Values.workerSandbox.sandbox.port }}
@@ -109,6 +170,11 @@ spec:
         - podSelector:
             matchLabels:
               {{- include "codeapi.serviceWorker.selectorLabels" . | nindent 14 }}
+        {{- if $officeDispatch }}
+        - podSelector:
+            matchLabels:
+              {{- include "codeapi.officeDispatch.selectorLabels" . | nindent 14 }}
+        {{- end }}
         - podSelector:
             matchLabels:
               {{- include "codeapi.api.selectorLabels" . | nindent 14 }}

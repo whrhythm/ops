@@ -68,6 +68,16 @@ spec:
     - from:
         - podSelector:
             matchExpressions:
-              - {key: app.kubernetes.io/component, operator: In, values: [api, service-worker, file-server, egress-gateway, tool-call-server]}
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - api
+                  - service-worker
+                  - file-server
+                  - egress-gateway
+                  - tool-call-server
+                  {{- if and .Values.workerSandbox.enabled .Values.workerSandbox.officeExecutionDispatch.enabled }}
+                  - office-execution-dispatch
+                  {{- end }}
       ports: [{protocol: TCP, port: 6379}]
   egress: []

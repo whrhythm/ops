@@ -99,6 +99,11 @@ app.kubernetes.io/component: service-worker
 app.kubernetes.io/component: service-worker
 {{- end }}
 
+{{- define "codeapi.officeDispatch.selectorLabels" -}}
+{{ include "codeapi.selectorLabels" . }}
+app.kubernetes.io/component: office-execution-dispatch
+{{- end }}
+
 {{/*
 Sandbox Runner specific labels
 */}}

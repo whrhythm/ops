@@ -140,6 +140,19 @@ workerSandbox:
     tag: latest
     pullPolicy: IfNotPresent
 
+  # Roll out compatible worker images before enabling
+  # CODEAPI_OFFICE_EXECUTION_DISPATCH_REQUIRED on the API.
+  officeExecutionDispatch:
+    enabled: false
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 384Mi
+
   sandboxImage:
     # With packages.source=image, build the api/Dockerfile default (or
     # sandbox-runner-baked). With source=pvc/direct mode, build

@@ -7,6 +7,10 @@ Split runtime deployments:
 {{- fail "workerSandbox.enabled requires egressGateway.enabled=true because sandbox-runner may only egress to the egress gateway" }}
 {{- end }}
 {{- if .Values.workerSandbox.enabled }}
+{{- $officeDispatch := .Values.workerSandbox.officeExecutionDispatch }}
+{{- if and $officeDispatch.enabled (not (and .Values.hardenedSandboxMode .Values.networkPolicy.enabled)) }}
+{{- fail "workerSandbox.officeExecutionDispatch requires hardenedSandboxMode=true and networkPolicy.enabled=true" }}
+{{- end }}
 {{- $legacyAutoscaling := default dict .Values.workerSandbox.autoscaling }}
 {{- if get $legacyAutoscaling "enabled" }}
 {{- fail "workerSandbox.autoscaling.enabled was replaced by workerSandbox.sandboxRunner.autoscaling.enabled; move autoscaling settings under workerSandbox.sandboxRunner.autoscaling" }}
@@ -153,6 +157,10 @@ spec:
             {{- end }}
             - name: SANDBOX_ENDPOINT
               value: "http://{{ include "codeapi.fullname" . }}-sandbox-runner:{{ .Values.workerSandbox.sandbox.port }}/api/v2"
+            {{- if $officeDispatch.enabled }}
+            - name: CODEAPI_OFFICE_EXECUTION_DISPATCH_URL
+              value: "http://{{ include "codeapi.fullname" . }}-office-execution-dispatch:3114"
+            {{- end }}
             - name: EGRESS_GATEWAY_URL
               value: "http://{{ include "codeapi.fullname" . }}-egress-gateway:{{ .Values.egressGateway.service.port }}"
             - name: REDIS_HOST

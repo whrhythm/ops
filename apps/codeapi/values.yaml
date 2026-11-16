@@ -10,7 +10,7 @@
     "replicaCount": 1,
     "image": {
       "repository": "harbor.k3s.local/internal/platform-control",
-      "tag": "codeapi-20261105.1-api@sha256:8c40e67f59519a73e3b8a175244b454ca2164001e24302f0e4c7fae811f49ed8",
+      "tag": "office-v101a-codeapi-api.1@sha256:318b95fb7e13de3b1b640f6173be670c88d0d9c5135c85f4fa092ef414d80c5a",
       "pullPolicy": "IfNotPresent"
     },
     "httpJsonLimit": "4mb",
@@ -58,10 +58,11 @@
     ]
   },
   "workerSandbox": {
+    "officeExecutionDispatch": {"enabled": true},
     "replicaCount": 1,
     "workerImage": {
       "repository": "harbor.k3s.local/internal/platform-control",
-      "tag": "codeapi-20261105.1-worker@sha256:f74b1d0f5714f39d933074afa12b6209c8ef187d9ba54e752dbe7f0ef260a3b8",
+      "tag": "office-v101a-codeapi-worker.1@sha256:e36041d852ab344f7cba9a9b22730ccfaf229b9c8ad56fbbe7cdb88de52be2d1",
       "pullPolicy": "IfNotPresent"
     },
     "sandboxImage": {
