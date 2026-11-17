@@ -137,6 +137,7 @@ spec:
         fsGroup: 101
         seccompProfile:
           type: RuntimeDefault
+        runAsNonRoot: true
       initContainers:
       - name: prepare-config-and-state
         image: harbor.k3s.local/internal/office-v101c-redis@sha256:56e4f286b852235a50017612fcb0022d5f83416a3cca4db6684f69685708813a
@@ -148,9 +149,9 @@ spec:
           case "$OPENMETER_PASSWORD" in (*[!a-f0-9]*|"") exit 2 ;; esac
           test "${#OPENMETER_PASSWORD}" -eq 64
           sed "s/__PASSWORD__/$OPENMETER_PASSWORD/g" /template/template.yaml > /config/config.yaml
-          mkdir -p /state/kafka
-          chown 1000:101 /state/kafka
-          chmod 0770 /state/kafka
+          umask 007
+          mkdir -p /state/kafka /state/clickhouse /state/postgres /state/redis
+          chmod 2770 /state/kafka /state/clickhouse /state/postgres /state/redis
         env:
         - name: OPENMETER_PASSWORD
           valueFrom:
@@ -174,6 +175,11 @@ spec:
             memory: 64Mi
         securityContext:
           allowPrivilegeEscalation: false
+          runAsUser: 10001
+          runAsGroup: 101
+          capabilities:
+            drop:
+            - ALL
       containers:
       - name: kafka
         image: harbor.k3s.local/internal/office-v101c-kafka@sha256:a1ae84a694f05f1cc0628eebf060a6d9aa95d9d23d251b4bd5eb6e3e259a6f52
@@ -227,6 +233,11 @@ spec:
             memory: 1536Mi
         securityContext:
           allowPrivilegeEscalation: false
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+            - ALL
       - name: clickhouse
         image: harbor.k3s.local/internal/office-v101c-clickhouse@sha256:41938061c7770c0228456fb061ddce93cf1518fad519fec00765f9822b83d0be
         command:
@@ -254,6 +265,11 @@ spec:
             memory: 2Gi
         securityContext:
           allowPrivilegeEscalation: false
+          runAsUser: 101
+          runAsGroup: 101
+          capabilities:
+            drop:
+            - ALL
       - name: postgres
         image: harbor.k3s.local/internal/office-v101c-postgres@sha256:38903b41719f419408174e51bd34e657df03ef7103639a64f5ccc9c6b3175a8e
         command:
@@ -280,6 +296,11 @@ spec:
             memory: 512Mi
         securityContext:
           allowPrivilegeEscalation: false
+          runAsUser: 70
+          runAsGroup: 70
+          capabilities:
+            drop:
+            - ALL
       - name: redis
         image: harbor.k3s.local/internal/office-v101c-redis@sha256:56e4f286b852235a50017612fcb0022d5f83416a3cca4db6684f69685708813a
         command:
@@ -308,6 +329,11 @@ spec:
             memory: 256Mi
         securityContext:
           allowPrivilegeEscalation: false
+          runAsUser: 999
+          runAsGroup: 1000
+          capabilities:
+            drop:
+            - ALL
       - name: openmeter
         image: harbor.k3s.local/internal/office-v101c-openmeter@sha256:270b0ac21e1b3092467465cc05c660b7766e871b841e7c9dfaf534dbf234fe2a
         command:
@@ -334,6 +360,8 @@ spec:
           capabilities:
             drop:
             - ALL
+          runAsUser: 10001
+          runAsGroup: 101
         readinessProbe:
           httpGet:
             path: /api/v1/meters
@@ -360,6 +388,8 @@ spec:
           capabilities:
             drop:
             - ALL
+          runAsUser: 10001
+          runAsGroup: 101
       volumes:
       - name: template
         configMap:
