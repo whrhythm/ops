@@ -1,0 +1,411 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openmeter-config
+  namespace: platform-system
+data:
+  template.yaml: |
+    address: 0.0.0.0:8888
+    telemetry:
+      log:
+        level: warn
+    ingest:
+      kafka:
+        broker: 127.0.0.1:9092
+    aggregation:
+      clickhouse:
+        address: 127.0.0.1:9000
+        password: __PASSWORD__
+        database: openmeter
+    sink:
+      minCommitCount: 1
+      namespaceRefetch: 15s
+      namespaceRefetchTimeout: 10s
+      kafka:
+        brokers: 127.0.0.1:9092
+        autoOffsetReset: earliest
+      dedupe:
+        enabled: true
+        driver: redis
+        config:
+          address: 127.0.0.1:6379
+          expiration: 768h
+    postgres:
+      url: postgres://postgres:__PASSWORD__@127.0.0.1:5432/postgres?sslmode=disable
+      autoMigrate: migration
+    credits:
+      enabled: false
+    meters:
+    - slug: office_input_tokens
+      eventType: starbridge.shadow.usage.v1
+      aggregation: SUM
+      groupBy:
+        channel: $.channel
+        model: $.model
+      valueProperty: $.prompt_tokens
+    - slug: office_output_tokens
+      eventType: starbridge.shadow.usage.v1
+      aggregation: SUM
+      groupBy:
+        channel: $.channel
+        model: $.model
+      valueProperty: $.completion_tokens
+    - slug: office_requests
+      eventType: starbridge.shadow.usage.v1
+      aggregation: COUNT
+      groupBy:
+        channel: $.channel
+        model: $.model
+    - slug: office_cost_pico
+      eventType: starbridge.shadow.cost.v1
+      aggregation: SUM
+      groupBy:
+        channel: $.channel
+        model: $.model
+        currency: $.currency
+        price_kind: $.price_kind
+      valueProperty: $.cost_pico
+    - slug: office_uncached_input_tokens
+      eventType: starbridge.usage.breakdown.v1.uncached_input_tokens
+      aggregation: SUM
+      valueProperty: $.tokens
+      groupBy:
+        channel: $.channel
+        model: $.model
+    - slug: office_cache_read_tokens
+      eventType: starbridge.usage.breakdown.v1.cache_read_tokens
+      aggregation: SUM
+      valueProperty: $.tokens
+      groupBy:
+        channel: $.channel
+        model: $.model
+    - slug: office_cache_write_tokens
+      eventType: starbridge.usage.breakdown.v1.cache_write_tokens
+      aggregation: SUM
+      valueProperty: $.tokens
+      groupBy:
+        channel: $.channel
+        model: $.model
+    - slug: office_reasoning_tokens
+      eventType: starbridge.usage.breakdown.v1.reasoning_tokens
+      aggregation: SUM
+      valueProperty: $.tokens
+      groupBy:
+        channel: $.channel
+        model: $.model
+    - slug: office_breakdown_incomplete
+      eventType: starbridge.usage.breakdown.v1.breakdown_incomplete
+      aggregation: SUM
+      valueProperty: $.tokens
+      groupBy:
+        channel: $.channel
+        model: $.model
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openmeter-data
+  namespace: platform-system
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 8Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openmeter
+  namespace: platform-system
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: &id001
+      app.kubernetes.io/name: openmeter
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+      - name: prepare-config-and-state
+        image: harbor.k3s.local/internal/office-v101c-redis@sha256:56e4f286b852235a50017612fcb0022d5f83416a3cca4db6684f69685708813a
+        command:
+        - sh
+        - -ec
+        - |-
+          umask 077
+          case "$OPENMETER_PASSWORD" in (*[!a-f0-9]*|"") exit 2 ;; esac
+          test "${#OPENMETER_PASSWORD}" -eq 64
+          sed "s/__PASSWORD__/$OPENMETER_PASSWORD/g" /template/template.yaml > /config/config.yaml
+          mkdir -p /state/kafka
+          chown 1000:101 /state/kafka
+          chmod 0770 /state/kafka
+        env:
+        - name: OPENMETER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: openmeter-runtime
+              key: password
+        volumeMounts:
+        - name: template
+          mountPath: /template
+          readOnly: true
+        - name: config
+          mountPath: /config
+        - name: data
+          mountPath: /state
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+      containers:
+      - name: kafka
+        image: harbor.k3s.local/internal/office-v101c-kafka@sha256:a1ae84a694f05f1cc0628eebf060a6d9aa95d9d23d251b4bd5eb6e3e259a6f52
+        command:
+        - /etc/confluent/docker/run
+        env:
+        - name: CLUSTER_ID
+          value: MkU3OEVBNTcwNTJENDM2Qk
+        - name: KAFKA_NODE_ID
+          value: '1'
+        - name: KAFKA_BROKER_ID
+          value: '1'
+        - name: KAFKA_PROCESS_ROLES
+          value: broker,controller
+        - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+          value: 1@127.0.0.1:9093
+        - name: KAFKA_CONTROLLER_LISTENER_NAMES
+          value: CONTROLLER
+        - name: KAFKA_INTER_BROKER_LISTENER_NAME
+          value: INTERNAL
+        - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+          value: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+        - name: KAFKA_ADVERTISED_LISTENERS
+          value: INTERNAL://127.0.0.1:9092
+        - name: KAFKA_LISTENERS
+          value: INTERNAL://127.0.0.1:9092,CONTROLLER://127.0.0.1:9093
+        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+          value: '1'
+        - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+          value: '1'
+        - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+          value: '1'
+        - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+          value: 'false'
+        - name: KAFKA_LOG_DIRS
+          value: /var/lib/kafka/data/logs
+        - name: KAFKA_HEAP_OPTS
+          value: -Xmx512m -Xms256m
+        - name: KAFKA_LOG_MESSAGE_TIMESTAMP_AFTER_MAX_MS
+          value: '9223372036854775807'
+        volumeMounts:
+        - name: data
+          subPath: kafka
+          mountPath: /var/lib/kafka/data
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: '2'
+            memory: 1536Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+      - name: clickhouse
+        image: harbor.k3s.local/internal/office-v101c-clickhouse@sha256:41938061c7770c0228456fb061ddce93cf1518fad519fec00765f9822b83d0be
+        command:
+        - /entrypoint.sh
+        env:
+        - name: CLICKHOUSE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: openmeter-runtime
+              key: password
+        - name: CLICKHOUSE_DB
+          value: openmeter
+        - name: CLICKHOUSE_USER
+          value: default
+        volumeMounts:
+        - name: data
+          subPath: clickhouse
+          mountPath: /var/lib/clickhouse
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: '2'
+            memory: 2Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+      - name: postgres
+        image: harbor.k3s.local/internal/office-v101c-postgres@sha256:38903b41719f419408174e51bd34e657df03ef7103639a64f5ccc9c6b3175a8e
+        command:
+        - docker-entrypoint.sh
+        - postgres
+        env:
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: openmeter-runtime
+              key: password
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - name: data
+          subPath: postgres
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: '2'
+            memory: 512Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+      - name: redis
+        image: harbor.k3s.local/internal/office-v101c-redis@sha256:56e4f286b852235a50017612fcb0022d5f83416a3cca4db6684f69685708813a
+        command:
+        - redis-server
+        - --bind
+        - 127.0.0.1
+        - --appendonly
+        - 'yes'
+        - --appendfsync
+        - always
+        - --maxmemory
+        - 128mb
+        - --maxmemory-policy
+        - noeviction
+        env: []
+        volumeMounts:
+        - name: data
+          subPath: redis
+          mountPath: /data
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: '2'
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+      - name: openmeter
+        image: harbor.k3s.local/internal/office-v101c-openmeter@sha256:270b0ac21e1b3092467465cc05c660b7766e871b841e7c9dfaf534dbf234fe2a
+        command:
+        - openmeter
+        - --config
+        - /etc/openmeter/config.yaml
+        - --telemetry-address
+        - :10001
+        env: []
+        volumeMounts:
+        - &id002
+          name: config
+          mountPath: /etc/openmeter
+          readOnly: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: '2'
+            memory: 512Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        readinessProbe:
+          httpGet:
+            path: /api/v1/meters
+            port: 8888
+          periodSeconds: 5
+      - name: sink
+        image: harbor.k3s.local/internal/office-v101c-openmeter@sha256:270b0ac21e1b3092467465cc05c660b7766e871b841e7c9dfaf534dbf234fe2a
+        command:
+        - openmeter-sink-worker
+        - --config
+        - /etc/openmeter/config.yaml
+        env: []
+        volumeMounts:
+        - *id002
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: '2'
+            memory: 512Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: template
+        configMap:
+          name: openmeter-config
+      - name: config
+        emptyDir:
+          medium: Memory
+          sizeLimit: 1Mi
+      - name: data
+        persistentVolumeClaim:
+          claimName: openmeter-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openmeter
+  namespace: platform-system
+spec:
+  selector:
+    app.kubernetes.io/name: openmeter
+  ports:
+  - name: http
+    port: 8888
+    targetPort: 8888
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openmeter
+  namespace: platform-system
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: openmeter
+  policyTypes:
+  - Ingress
+  - Egress
+  egress: []
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: platform-api
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: platform-cost-meter
+    ports:
+    - protocol: TCP
+      port: 8888

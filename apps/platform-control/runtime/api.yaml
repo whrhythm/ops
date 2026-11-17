@@ -36,6 +36,8 @@ spec:
           env:
             - name: PLATFORM_COST_CONSOLE_ENABLED
               value: "true"
+            - name: PLATFORM_OPENMETER_URL
+              value: http://openmeter.platform-system.svc.cluster.local:8888
             - name: PLATFORM_OFFICE_TASKS_ENABLED
               value: "true"
             - name: PLATFORM_ENTERPRISE_ENABLED

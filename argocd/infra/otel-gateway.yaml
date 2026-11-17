@@ -23,6 +23,12 @@ spec:
           tag: "0.163.2"
         command:
           name: otelcol-contrib
+        extraEnvs:
+          - name: METER_RECEIVER_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: otel-model-usage
+                key: token
         alternateConfig:
           receivers:
             otlp:
@@ -31,6 +37,12 @@ spec:
                   endpoint: ${env:MY_POD_IP}:4317
                 http:
                   endpoint: ${env:MY_POD_IP}:4318
+            otlp/model-usage:
+              protocols:
+                http:
+                  endpoint: ${env:MY_POD_IP}:4328
+                  auth:
+                    authenticator: bearertokenauth/model-usage
           processors:
             memory_limiter:
               check_interval: 5s
@@ -49,12 +61,25 @@ spec:
               endpoint: signoz-otel-collector.signoz.svc.cluster.local:4317
               tls:
                 insecure: true
+            otlp_http/model-usage:
+              logs_endpoint: http://metering-receiver.platform-system.svc.cluster.local:8095/v1/logs
+              encoding: json
+              compression: none
+              headers:
+                X-Meter-Token: ${env:METER_RECEIVER_TOKEN}
+              sending_queue:
+                enabled: false
+              retry_on_failure:
+                enabled: false
           extensions:
             health_check:
               endpoint: ${env:MY_POD_IP}:13133
+            bearertokenauth/model-usage:
+              token: ${env:METER_RECEIVER_TOKEN}
           service:
             extensions:
               - health_check
+              - bearertokenauth/model-usage
             pipelines:
               traces:
                 receivers:
@@ -81,6 +106,11 @@ spec:
                   - batch
                 exporters:
                   - otlp
+              logs/model-usage:
+                receivers:
+                  - otlp/model-usage
+                exporters:
+                  - otlp_http/model-usage
         ports:
           otlp:
             enabled: true
@@ -92,6 +122,11 @@ spec:
             enabled: true
             containerPort: 4318
             servicePort: 4318
+            protocol: TCP
+          model-usage:
+            enabled: true
+            containerPort: 4328
+            servicePort: 4328
             protocol: TCP
           jaeger-compact:
             enabled: false

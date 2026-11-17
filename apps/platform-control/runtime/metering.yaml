@@ -1,0 +1,377 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metering-receiver
+  namespace: platform-system
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: &id001
+      app.kubernetes.io/name: metering-receiver
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: receiver
+        image: harbor.k3s.local/internal/platform-control@sha256:4643f3140c22a82d726bf91dcdc5f39df9dcbb42e03625763b8e58a07828330b
+        command:
+        - python
+        - -m
+        - uvicorn
+        - control_plane.metering_receiver:create_app
+        - --factory
+        - --host
+        - 0.0.0.0
+        - --port
+        - '8095'
+        - --no-access-log
+        env:
+        - name: PLATFORM_COST_INGEST_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: platform-metering-ingest
+              key: token
+        envFrom:
+        - configMapRef:
+            name: platform-config
+        - secretRef:
+            name: platform-db-api
+        volumeMounts:
+        - name: ca
+          mountPath: /etc/platform-ca
+          readOnly: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 40m
+            memory: 64Mi
+          limits:
+            cpu: 300m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8095
+          periodSeconds: 5
+      volumes:
+      - name: ca
+        configMap:
+          name: platform-ca
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: metering-receiver
+  namespace: platform-system
+spec:
+  selector:
+    app.kubernetes.io/name: metering-receiver
+  ports:
+  - name: http
+    port: 8095
+    targetPort: 8095
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: platform-cost-meter
+  namespace: platform-system
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: &id001
+      app.kubernetes.io/name: platform-cost-meter
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: publisher
+        image: harbor.k3s.local/internal/platform-control@sha256:4643f3140c22a82d726bf91dcdc5f39df9dcbb42e03625763b8e58a07828330b
+        command:
+        - python
+        - -m
+        - control_plane.cost_meter_worker
+        env:
+        - name: PLATFORM_COST_CONSOLE_ENABLED
+          value: 'true'
+        - name: PLATFORM_OPENMETER_URL
+          value: http://openmeter.platform-system.svc.cluster.local:8888
+        envFrom:
+        - &id002
+          configMapRef:
+            name: platform-config
+        - &id003
+          secretRef:
+            name: platform-db-api
+        volumeMounts:
+        - &id004
+          name: ca
+          mountPath: /etc/platform-ca
+          readOnly: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 40m
+            memory: 64Mi
+          limits:
+            cpu: 300m
+            memory: 256Mi
+      - name: native-audit
+        image: harbor.k3s.local/internal/platform-control@sha256:4643f3140c22a82d726bf91dcdc5f39df9dcbb42e03625763b8e58a07828330b
+        command:
+        - python
+        - -m
+        - control_plane.cost_native_audit
+        env:
+        - name: PLATFORM_COST_CONSOLE_ENABLED
+          value: 'true'
+        envFrom:
+        - *id002
+        - *id003
+        - secretRef:
+            name: platform-metering-source
+        volumeMounts:
+        - *id004
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 40m
+            memory: 64Mi
+          limits:
+            cpu: 300m
+            memory: 256Mi
+      volumes:
+      - name: ca
+        configMap:
+          name: platform-ca
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: metering-export-cursor
+  namespace: platform-system
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metering-exporter
+  namespace: platform-system
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: &id001
+      app.kubernetes.io/name: metering-exporter
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: exporter
+        image: harbor.k3s.local/internal/platform-control@sha256:4643f3140c22a82d726bf91dcdc5f39df9dcbb42e03625763b8e58a07828330b
+        command:
+        - python
+        - -m
+        - control_plane.litellm_usage_export
+        env:
+        - name: METER_CURSOR_FILE
+          value: /state/cursor.json
+        - name: METER_OTLP_LOGS_URL
+          value: http://otel-gateway.otel.svc.cluster.local:4328/v1/logs
+        - name: METER_OTLP_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: platform-metering-ingest
+              key: token
+        envFrom:
+        - secretRef:
+            name: platform-metering-source
+        volumeMounts:
+        - name: state
+          mountPath: /state
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 40m
+            memory: 64Mi
+          limits:
+            cpu: 300m
+            memory: 256Mi
+      volumes:
+      - name: state
+        persistentVolumeClaim:
+          claimName: metering-export-cursor
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: metering-receiver
+  namespace: platform-system
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: metering-receiver
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: otel
+    ports:
+    - protocol: TCP
+      port: 8095
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: platform-cost-meter
+  namespace: platform-system
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: platform-cost-meter
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress: []
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: openmeter
+    ports:
+    - protocol: TCP
+      port: 8888
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: metering-exporter
+  namespace: platform-system
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: metering-exporter
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress: []
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: otel
+    ports:
+    - protocol: TCP
+      port: 4328
