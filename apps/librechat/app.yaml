@@ -88,7 +88,7 @@ data:
           modelDisplayLabel: 星桥
           models:
             fetch: false
-            default: [deepseek-v4-flash-v2]
+            default: [deepseek-v4-flash-v2, gpt-6-sol]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -108,6 +108,7 @@ spec:
         app: librechat
       annotations:
         starbridge.local/settings-revision: enterprise-e1-20261113.1
+        starbridge.local/model-catalog-revision: gpt-6-sol-20261117.1
     spec:
       automountServiceAccountToken: false
       hostAliases:
