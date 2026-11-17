@@ -32,7 +32,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: harbor.k3s.local/internal/platform-control@sha256:7a48a76f954c9c3bdf97bae2a87168aa39c744938055ba8ee3959d1e6599914d
+          image: harbor.k3s.local/internal/platform-control@sha256:f9df6ac09b96b17950d66f126b8e134138f87acb0f80e5bb8f77f7b3e873c99b
           env:
             - name: PLATFORM_COST_CONSOLE_ENABLED
               value: "true"
