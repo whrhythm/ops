@@ -1,0 +1,72 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: platform-enable-gpt-6-sol
+  namespace: platform-system
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 90
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: platform-enable-gpt-6-sol
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: policy
+          image: harbor.k3s.local/internal/platform-control@sha256:7a48a76f954c9c3bdf97bae2a87168aa39c744938055ba8ee3959d1e6599914d
+          command: [python, -c]
+          args:
+            - |
+              from control_plane.ai_policy import AIPolicy, effective_policy, provider_catalog
+              from control_plane.database import SessionLocal
+              from control_plane.models import AIConfiguration, AuditEvent
+              from control_plane.settings import get_settings
+
+              target = 'gpt-6-sol'
+              settings = get_settings()
+              catalog = {item['name']: item for item in provider_catalog(settings)}
+              info = catalog.get(target)
+              if not info or (info['input_cost_per_token'], info['output_cost_per_token']) != (0.000002, 0.00001):
+                  raise SystemExit('The GPT-6 Sol route and published rates are not ready')
+              with SessionLocal.begin() as db:
+                  row = db.get(AIConfiguration, 'default', with_for_update=True)
+                  if row is None:
+                      raise SystemExit('The managed model policy is missing')
+                  before = row.config['allowed_models']
+                  if target not in before:
+                      if 'deepseek-v4-flash-v2' not in before:
+                          raise SystemExit('The managed model policy no longer matches the release')
+                      models = [*before, target]
+                      AIPolicy.model_validate({**effective_policy(db, settings), 'allowed_models': models})
+                      row.config = {**row.config, 'allowed_models': models}
+                      row.revision += 1
+                      db.add(AuditEvent(tenant_id='platform', issuer='system:gitops',
+                                       subject='v105-gpt-6-sol', action='ai.policy.updated', target_id='default'))
+              print('GPT-6 Sol permission confirmed in the managed model policy')
+          envFrom:
+            - configMapRef: {name: platform-config}
+            - secretRef: {name: platform-db-api}
+            - secretRef: {name: platform-model-provisioning}
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: ca, mountPath: /etc/platform-ca, readOnly: true}
+      volumes:
+        - name: ca
+          configMap: {name: platform-ca}
