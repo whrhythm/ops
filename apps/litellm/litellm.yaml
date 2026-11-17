@@ -36,6 +36,26 @@ data:
           cache_read_input_token_cost_above_272k_tokens: 0.0000004
           cache_creation_input_token_cost_above_272k_tokens: 0.000005
           output_cost_per_token_above_272k_tokens: 0.000015
+      - model_name: gpt-6-sol-vision-qa
+        litellm_params:
+          # The supplier accepts function tools only through its Responses API.
+          # LiteLLM keeps the existing Chat Completions interface for LibreChat.
+          model: openai/responses/gpt-6-sol
+          api_base: https://api.siliconrouter.com/v1
+          api_key: os.environ/SILICONROUTER_API_KEY
+          store: false
+        # Initial platform test rates, USD/token, match the public channel schedule.
+        # Procurement pricing and reconciliation are maintained independently.
+        model_info:
+          base_model: gpt-6-sol
+          input_cost_per_token: 0.000002
+          cache_read_input_token_cost: 0.0000002
+          cache_creation_input_token_cost: 0.0000025
+          output_cost_per_token: 0.00001
+          input_cost_per_token_above_272k_tokens: 0.000004
+          cache_read_input_token_cost_above_272k_tokens: 0.0000004
+          cache_creation_input_token_cost_above_272k_tokens: 0.000005
+          output_cost_per_token_above_272k_tokens: 0.000015
     litellm_settings:
       drop_params: true
       telemetry: false
@@ -49,7 +69,10 @@ spec:
   replicas: 1
   revisionHistoryLimit: 3
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: litellm
@@ -58,7 +81,7 @@ spec:
       labels:
         app: litellm
       annotations:
-        starbridge.local/model-catalog-revision: gpt-6-sol-20261117.1
+        starbridge.local/model-catalog-revision: gpt-6-sol-vision-qa-20261117.1
     spec:
       automountServiceAccountToken: false
       securityContext:
