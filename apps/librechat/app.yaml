@@ -59,6 +59,7 @@ data:
     version: 1.3.18
     mcpAppSandbox:
       url: https://mcp-apps.k3s.local:30443/api/mcp/sandbox
+      maxActionPreviewChars: 1048576
       operationLimits:
         maxBytes: 8388608
         timeoutMs: 60000
@@ -113,7 +114,7 @@ spec:
       labels:
         app: librechat
       annotations:
-        starbridge.local/mcp-app-policy-revision: "20261118.3"
+        starbridge.local/mcp-app-policy-revision: "20261118.4"
         starbridge.local/settings-revision: enterprise-e1-20261113.1
         starbridge.local/model-catalog-revision: gpt-6-sol-20261117.1
     spec:
