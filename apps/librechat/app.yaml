@@ -130,7 +130,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/starbridge-office@sha256:1e405b425537fa9e66ba300d700fea2939de7d86b671153be7b4554a0d82d4fa
+          image: harbor.k3s.local/internal/starbridge-office@sha256:853abd98fd25711a58ac6958b44d406a22445042ed101f2696c4dc70c81ba995
           env:
             - name: STARBRIDGE_ENTERPRISE_ENABLED
               value: "true"
@@ -201,5 +201,6 @@ spec:
   ports:
     - port: 3080
       targetPort: 3080
+
 
 
