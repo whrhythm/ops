@@ -32,8 +32,10 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: harbor.k3s.local/internal/platform-control@sha256:5dfd68b1ce70aea509248cf601ac5046ddb8caf3dbb2d267bcc00dcca153d934
+          image: harbor.k3s.local/internal/platform-control@sha256:a8ec7ed56de2a051343aab492504f844f4fe44b5e0f6cfe1803d44866d8ea137
           env:
+            - name: PLATFORM_OFFICE_SKILLS_ENABLED
+              value: "true"
             - name: PLATFORM_COST_CONSOLE_ENABLED
               value: "true"
             - name: PLATFORM_OPENMETER_URL
