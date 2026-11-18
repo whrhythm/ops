@@ -73,7 +73,7 @@ data:
     endpoints:
       agents:
         nativePythonCodeExecution: true
-        officeSkills: true
+        officeSkills: false
         officeExecutionGuidance: true
         durableOfficeTasks: true
         codeApiFileReadTimeoutMs: 60000
