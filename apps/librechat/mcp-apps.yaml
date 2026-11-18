@@ -1,0 +1,47 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: librechat-mcp-apps
+  namespace: librechat
+spec:
+  secretName: librechat-mcp-apps-tls
+  duration: 8760h
+  renewBefore: 720h
+  dnsNames: [mcp-apps.k3s.local]
+  issuerRef:
+    name: internal-ca
+    kind: ClusterIssuer
+---
+apiVersion: apisix.apache.org/v2
+kind: ApisixRoute
+metadata:
+  name: librechat-mcp-apps
+  namespace: librechat
+spec:
+  ingressClassName: apisix
+  http:
+    - name: sandbox
+      match:
+        hosts: [mcp-apps.k3s.local]
+        paths: [/api/mcp/sandbox]
+        methods: [GET]
+      backends:
+        - serviceName: librechat
+          servicePort: 3080
+      plugins:
+        - name: redirect
+          enable: true
+          config:
+            http_to_https: true
+---
+apiVersion: apisix.apache.org/v2
+kind: ApisixTls
+metadata:
+  name: librechat-mcp-apps
+  namespace: librechat
+spec:
+  ingressClassName: apisix
+  hosts: [mcp-apps.k3s.local]
+  secret:
+    name: librechat-mcp-apps-tls
+    namespace: librechat

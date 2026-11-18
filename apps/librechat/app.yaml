@@ -57,6 +57,8 @@ metadata:
 data:
   librechat.yaml: |
     version: 1.3.18
+    mcpAppSandbox:
+      url: https://mcp-apps.k3s.local:30443/api/mcp/sandbox
     interface:
       agents: false
       runCode: true
@@ -127,6 +129,8 @@ spec:
           env:
             - name: STARBRIDGE_ENTERPRISE_ENABLED
               value: "true"
+            - name: MCP_SANDBOX_FRAME_ANCESTORS
+              value: https://chat.k3s.local:30443
           command: [node, api/server/index.js]
           ports:
             - containerPort: 3080
