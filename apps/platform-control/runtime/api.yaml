@@ -34,6 +34,19 @@ spec:
         - name: api
           image: harbor.k3s.local/internal/platform-control@sha256:2a5bd413662b1cdf7a9c1ce95c2c8bcf5b4d91ad6ca8308c33b5d06264cf7c28
           env:
+            - name: PLATFORM_DAILY_FREE_ACCOUNT
+              value: "6ee749cd-614b-411e-8a3c-aa92b19b79e5"
+            - name: PLATFORM_DAILY_FREE_TOKENS
+              value: "2048"
+            - name: PLATFORM_DAILY_FREE_MAX_OUTPUT
+              value: "2048"
+            - name: PLATFORM_DAILY_FREE_MODELS
+              value: '["deepseek-v4-flash-v2"]'
+            - name: PLATFORM_DAILY_FREE_SPONSOR_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: r3-daily-trial-key
+                  key: token
             - name: PLATFORM_OFFICE_SKILLS_ENABLED
               value: "true"
             - name: PLATFORM_COST_CONSOLE_ENABLED
