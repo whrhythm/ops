@@ -66,8 +66,10 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: scan
-          image: harbor.k3s.local/internal/platform-control@sha256:a056b6583b66777a7c444194114cb1d27d89f53d2783f1fbb9b8f221768a2c82
+          image: harbor.k3s.local/internal/platform-control@sha256:7e3e21f4526891ae33617642a3f1fd3ff82c881af45a6ef186c5613e5bc77a10
           env:
+            - name: STARBRIDGE_WORD_PAGES_ENABLED
+              value: "true"
             - name: STARBRIDGE_SCAN_STATE
               value: /var/lib/office-ocr
             - name: STARBRIDGE_SCAN_TOKEN
@@ -91,7 +93,22 @@ spec:
             - {name: results, mountPath: /var/lib/office-ocr}
             - {name: tmp, mountPath: /tmp}
             - {name: tls, mountPath: /tls, readOnly: true}
+        - name: word-pages
+          image: harbor.k3s.local/internal/office-word-pages@sha256:76ce90b2e19b78910d5e349bb0ed9ce2cf4ebef1a620d0ca681d480e4a49631d
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+            limits: {cpu: "1", memory: 768Mi}
+          securityContext:
+            runAsUser: 10002
+            runAsGroup: 10002
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: pages-tmp, mountPath: /tmp}
       volumes:
+        - name: pages-tmp
+          emptyDir: {sizeLimit: 192Mi}
         - name: results
           persistentVolumeClaim: {claimName: office-scan-results}
         - name: tmp

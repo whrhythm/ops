@@ -130,10 +130,14 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/starbridge-office@sha256:1540d6b760dce3bf1a6346950e0e4a4577d8dfeda3654250581bebeedb9fd148
+          image: harbor.k3s.local/internal/starbridge-office@sha256:7f7b2435fc23a6b9e206d14f508b6f20c933a780394108b0d1c1ba190340576f
           env:
             - name: STARBRIDGE_WORD_SECTION_AUDIENCE
               value: starbridge-convergence-3a3c5efa@example.test
+            - name: STARBRIDGE_WORD_PAGES_ENABLED
+              value: "true"
+            - name: STARBRIDGE_WORD_PAGES_SUBJECT
+              valueFrom: {secretKeyRef: {name: office-scan-access, key: subject}}
             - name: STARBRIDGE_SCAN_ENABLED
               value: "true"
             - name: STARBRIDGE_SCAN_URL
