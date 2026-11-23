@@ -32,7 +32,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: harbor.k3s.local/internal/platform-control@sha256:8847bd9e35e32339f9cec3737e80dae2919a0c2e8a17065618a2a140c621c8d0
+          image: harbor.k3s.local/internal/platform-control@sha256:2a5bd413662b1cdf7a9c1ce95c2c8bcf5b4d91ad6ca8308c33b5d06264cf7c28
           env:
             - name: PLATFORM_OFFICE_SKILLS_ENABLED
               value: "true"
