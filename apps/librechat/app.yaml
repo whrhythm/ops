@@ -130,8 +130,10 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/starbridge-office@sha256:fc9b11480460aa35a001dc530df7c321df956fde977de552e215ec7abd96ba4c
+          image: harbor.k3s.local/internal/starbridge-office@sha256:1540d6b760dce3bf1a6346950e0e4a4577d8dfeda3654250581bebeedb9fd148
           env:
+            - name: STARBRIDGE_WORD_SECTION_AUDIENCE
+              value: starbridge-convergence-3a3c5efa@example.test
             - name: STARBRIDGE_SCAN_ENABLED
               value: "true"
             - name: STARBRIDGE_SCAN_URL
