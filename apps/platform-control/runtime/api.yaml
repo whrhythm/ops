@@ -32,8 +32,25 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: harbor.k3s.local/internal/platform-control@sha256:ec28209c57a7fbee62faff2f0ee9cb5c2685fe714f29677440b011cbc7f2789e
+          image: harbor.k3s.local/internal/platform-control@sha256:fa4255f4cf52c77f5bda94ae94d1912f9f82e52d07bfd303139bf39361e6c469
           env:
+            - name: PLATFORM_DAILY_FREE_ACCOUNT
+              value: "6ee749cd-614b-411e-8a3c-aa92b19b79e5"
+            - name: PLATFORM_DAILY_FREE_STARTS_AT
+              value: "2026-11-24T00:00:00+08:00"
+            - name: PLATFORM_DAILY_FREE_ENDS_AT
+              value: "2026-11-24T14:40:00+08:00"
+            - name: PLATFORM_DAILY_FREE_TOKENS
+              value: "4096"
+            - name: PLATFORM_DAILY_FREE_MAX_OUTPUT
+              value: "768"
+            - name: PLATFORM_DAILY_FREE_MODELS
+              value: '["deepseek-v4-flash-v2"]'
+            - name: PLATFORM_DAILY_FREE_SPONSOR_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: r3-daily-trial-key
+                  key: token
             - name: PLATFORM_OFFICE_SKILLS_ENABLED
               value: "true"
             - name: PLATFORM_COST_CONSOLE_ENABLED
