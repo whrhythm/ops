@@ -130,8 +130,16 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/starbridge-office@sha256:a613ef2c068bfea0bc9124abd8e1fee216cb682417f596bcc3a44b1c35e8cadb
+          image: harbor.k3s.local/internal/starbridge-office@sha256:c38152b6068cc0f240037f12655c1ad854fb0e5bacb98d0f67d383a6bc49d01a
           env:
+            - name: STARBRIDGE_SCAN_ENABLED
+              value: "true"
+            - name: STARBRIDGE_SCAN_URL
+              value: https://office-scan.librechat.svc.cluster.local:8443
+            - name: STARBRIDGE_SCAN_SUBJECT
+              valueFrom: {secretKeyRef: {name: office-scan-access, key: subject}}
+            - name: STARBRIDGE_SCAN_TOKEN
+              valueFrom: {secretKeyRef: {name: office-scan-access, key: token}}
             - name: STARBRIDGE_WORD_REVIEW_AUDIENCE
               value: "all"
             - name: STARBRIDGE_ENTERPRISE_ENABLED

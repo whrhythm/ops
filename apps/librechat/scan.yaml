@@ -1,0 +1,100 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: office-scan
+  namespace: librechat
+spec:
+  secretName: office-scan-tls
+  dnsNames: [office-scan.librechat.svc.cluster.local]
+  issuerRef: {name: internal-ca, kind: ClusterIssuer}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: office-scan-results
+  namespace: librechat
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  storageClassName: longhorn
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: {storage: 2Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: office-scan
+  namespace: librechat
+spec:
+  selector: {app: office-scan}
+  ports: [{name: https, port: 8443, targetPort: 8443}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: office-scan
+  namespace: librechat
+spec:
+  podSelector: {matchLabels: {app: office-scan}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app: librechat}}
+      ports: [{protocol: TCP, port: 8443}]
+  egress: []
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: office-scan
+  namespace: librechat
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: office-scan}}
+  template:
+    metadata:
+      labels: {app: office-scan}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: scan
+          image: harbor.k3s.local/internal/platform-control@sha256:a056b6583b66777a7c444194114cb1d27d89f53d2783f1fbb9b8f221768a2c82
+          env:
+            - name: STARBRIDGE_SCAN_STATE
+              value: /var/lib/office-ocr
+            - name: STARBRIDGE_SCAN_TOKEN
+              valueFrom: {secretKeyRef: {name: office-scan-access, key: token}}
+          ports: [{containerPort: 8443}]
+          resources:
+            requests: {cpu: "1", memory: 2Gi}
+            limits: {cpu: "4", memory: 8Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          readinessProbe:
+            httpGet: {scheme: HTTPS, path: /ready, port: 8443}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {scheme: HTTPS, path: /live, port: 8443}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          volumeMounts:
+            - {name: results, mountPath: /var/lib/office-ocr}
+            - {name: tmp, mountPath: /tmp}
+            - {name: tls, mountPath: /tls, readOnly: true}
+      volumes:
+        - name: results
+          persistentVolumeClaim: {claimName: office-scan-results}
+        - name: tmp
+          emptyDir: {sizeLimit: 256Mi}
+        - name: tls
+          secret: {secretName: office-scan-tls, defaultMode: 288}
