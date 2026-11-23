@@ -133,7 +133,7 @@ spec:
           image: harbor.k3s.local/internal/starbridge-office@sha256:a613ef2c068bfea0bc9124abd8e1fee216cb682417f596bcc3a44b1c35e8cadb
           env:
             - name: STARBRIDGE_WORD_REVIEW_AUDIENCE
-              value: "starbridge-convergence-3a3c5efa@example.test"
+              value: "all"
             - name: STARBRIDGE_ENTERPRISE_ENABLED
               value: "true"
             - name: MCP_SANDBOX_FRAME_ANCESTORS
