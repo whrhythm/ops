@@ -130,7 +130,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/starbridge-office@sha256:55fdae730110d50b1734658d14b57513ddb3f70c72aca21a66c0fcba2b5720ad
+          image: harbor.k3s.local/internal/starbridge-office@sha256:fbd2dd65980fcad6d03cf08a918d43f1033d6b2c1ddf7f54386a7afc1cb6fe3d
           env:
             - name: STARBRIDGE_PAYMENT_SUBJECT
               valueFrom: {secretKeyRef: {name: office-scan-access, key: subject}}
