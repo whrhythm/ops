@@ -153,12 +153,14 @@ spec:
             cpu: 300m
             memory: 256Mi
       - name: native-audit
-        image: harbor.k3s.local/internal/platform-meter@sha256:297a628e0e8a92b5deeefb24e543f2420319354367cd5e9842c9935a2dadbee7
+        image: harbor.k3s.local/internal/platform-control@sha256:83c28cfc3ad83a1f161853cd632c6d40bf4303b729c9f733a050cf5855d4e9a7
         command:
         - python
         - -m
         - control_plane.cost_native_audit
         env:
+        - name: NATIVE_AUDIT_ALL_MANAGED
+          value: 'true'
         - name: NATIVE_AUDIT_ADDITIONAL_OWNERS
           value: starbridge-r3-daily-demo-20261123
         - name: PLATFORM_COST_CONSOLE_ENABLED
