@@ -34,7 +34,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: harbor.k3s.local/internal/platform-control@sha256:db1ad0a4c4a9b532931ac7925b72465d555ce2e3f2805c0bbdf98cda1414510d
+          image: harbor.k3s.local/internal/platform-control@sha256:8938789445aefd00b6252ddc451ab174cbf58aa7f7c2f3d62fe1587e34b0da55
           env:
             - name: PLATFORM_XUNHUPAY_SIMULATOR_ENABLED
               value: "true"
