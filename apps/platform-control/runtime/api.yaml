@@ -7,6 +7,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "2"
 spec:
   replicas: 1
+  strategy: {type: Recreate}
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -28,12 +29,21 @@ spec:
         runAsNonRoot: true
         runAsUser: 10001
         runAsGroup: 10001
+        fsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: api
-          image: harbor.k3s.local/internal/platform-control@sha256:a591ae99c6c4d3348f6b776b0bb5fe7809b1b6a357dabfceb657a2351bbed0a3
+          image: harbor.k3s.local/internal/platform-control@sha256:5d2711fdbd594c7e548d539b7c58ee658d2edf07c514c248b5b48647a275ed1c
           env:
+            - name: PLATFORM_XUNHUPAY_SIMULATOR_ENABLED
+              value: "true"
+            - name: PLATFORM_XUNHUPAY_SIMULATOR_ACCOUNT
+              value: "6ee749cd-614b-411e-8a3c-aa92b19b79e5"
+            - name: PLATFORM_XUNHUPAY_APPID
+              valueFrom: {secretKeyRef: {name: payment-simulation, key: appid}}
+            - name: PLATFORM_XUNHUPAY_SECRET
+              valueFrom: {secretKeyRef: {name: payment-simulation, key: secret}}
             - name: PLATFORM_DAILY_FREE_ACCOUNT
               value: "6ee749cd-614b-411e-8a3c-aa92b19b79e5"
             - name: PLATFORM_DAILY_FREE_STARTS_AT
@@ -115,13 +125,45 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
+        - name: payment-simulator
+          image: harbor.k3s.local/internal/platform-control@sha256:5d2711fdbd594c7e548d539b7c58ee658d2edf07c514c248b5b48647a275ed1c
+          command: [python, /app/scripts/xunhupay_simulator.py, --auto-pay, --state, /var/lib/payment-simulator/orders.sqlite]
+          env:
+            - name: XUNHUPAY_SIM_APPID
+              valueFrom: {secretKeyRef: {name: payment-simulation, key: appid}}
+            - name: XUNHUPAY_SIM_SECRET
+              valueFrom: {secretKeyRef: {name: payment-simulation, key: secret}}
+          resources:
+            requests: {cpu: 25m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: payment-state, mountPath: /var/lib/payment-simulator}
       volumes:
+        - name: payment-state
+          persistentVolumeClaim: {claimName: payment-simulation}
         - name: ca
           configMap:
             name: platform-ca
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: payment-simulation
+  namespace: platform-system
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: longhorn
+  resources:
+    requests: {storage: 1Gi}
 ---
 apiVersion: v1
 kind: Service
