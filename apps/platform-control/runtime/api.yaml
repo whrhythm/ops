@@ -34,7 +34,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: harbor.k3s.local/internal/platform-control@sha256:5d2711fdbd594c7e548d539b7c58ee658d2edf07c514c248b5b48647a275ed1c
+          image: harbor.k3s.local/internal/platform-control@sha256:db1ad0a4c4a9b532931ac7925b72465d555ce2e3f2805c0bbdf98cda1414510d
           env:
             - name: PLATFORM_XUNHUPAY_SIMULATOR_ENABLED
               value: "true"
@@ -64,6 +64,8 @@ spec:
             - name: PLATFORM_DAILY_FREE_SPONSOR_OWNER
               value: "starbridge-r3-daily-demo-20261123"
             - name: PLATFORM_OFFICE_SKILLS_ENABLED
+              value: "true"
+            - name: PLATFORM_COST_CONSOLE_TEST_MODE
               value: "true"
             - name: PLATFORM_COST_CONSOLE_ENABLED
               value: "true"

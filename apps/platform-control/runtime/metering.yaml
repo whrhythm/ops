@@ -24,7 +24,7 @@ spec:
           type: RuntimeDefault
       containers:
       - name: receiver
-        image: harbor.k3s.local/internal/platform-control@sha256:f9df6ac09b96b17950d66f126b8e134138f87acb0f80e5bb8f77f7b3e873c99b
+        image: harbor.k3s.local/internal/platform-meter@sha256:078b6e6876661f963f91278998686ba305dacd5f095e31a1bb500394c061b0f2
         command:
         - python
         - -m
@@ -37,6 +37,8 @@ spec:
         - '8095'
         - --no-access-log
         env:
+        - name: PLATFORM_COST_CONSOLE_TEST_MODE
+          value: 'true'
         - name: PLATFORM_COST_INGEST_TOKEN
           valueFrom:
             secretKeyRef:
@@ -113,12 +115,14 @@ spec:
           type: RuntimeDefault
       containers:
       - name: publisher
-        image: harbor.k3s.local/internal/platform-control@sha256:f9df6ac09b96b17950d66f126b8e134138f87acb0f80e5bb8f77f7b3e873c99b
+        image: harbor.k3s.local/internal/platform-meter@sha256:078b6e6876661f963f91278998686ba305dacd5f095e31a1bb500394c061b0f2
         command:
         - python
         - -m
         - control_plane.cost_meter_worker
         env:
+        - name: PLATFORM_COST_CONSOLE_TEST_MODE
+          value: 'true'
         - name: PLATFORM_COST_CONSOLE_ENABLED
           value: 'true'
         - name: PLATFORM_OPENMETER_URL
@@ -149,12 +153,14 @@ spec:
             cpu: 300m
             memory: 256Mi
       - name: native-audit
-        image: harbor.k3s.local/internal/platform-control@sha256:f9df6ac09b96b17950d66f126b8e134138f87acb0f80e5bb8f77f7b3e873c99b
+        image: harbor.k3s.local/internal/platform-meter@sha256:078b6e6876661f963f91278998686ba305dacd5f095e31a1bb500394c061b0f2
         command:
         - python
         - -m
         - control_plane.cost_native_audit
         env:
+        - name: NATIVE_AUDIT_ADDITIONAL_OWNERS
+          value: starbridge-r3-daily-demo-20261123
         - name: PLATFORM_COST_CONSOLE_ENABLED
           value: 'true'
         envFrom:
