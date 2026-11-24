@@ -38,10 +38,22 @@ spec:
           env:
             - name: PLATFORM_MODEL_TOOL_FAILURE_GUARD
               value: "true"
+            - name: PLATFORM_MANAGED_CHAT_BUDGET_ENABLED
+              value: "true"
+            - name: PLATFORM_MANAGED_CHAT_PROFILES
+              value: '{"deepseek-v4-flash-v2":{"input_ceiling_per_million":"0.3","output_ceiling_per_million":"1.2","context_limit":1000000,"framing_tokens":1024},"gpt-6-sol":{"input_ceiling_per_million":"5","output_ceiling_per_million":"15","context_limit":1000000,"framing_tokens":1024,"image_token_bound":32768,"max_image_dimension":2048}}'
+            - name: PLATFORM_MANAGED_CHAT_MAX_CALL_USD
+              value: "1"
+            - name: PLATFORM_MANAGED_CHAT_FREE_DAILY_USD
+              value: "0.10"
+            - name: PLATFORM_DAILY_FREE_ALL_ACCOUNTS
+              value: "true"
+            - name: PLATFORM_SIMULATOR_ORDERS_MONTHLY
+              value: "1"
             - name: PLATFORM_XUNHUPAY_SIMULATOR_ENABLED
               value: "true"
             - name: PLATFORM_XUNHUPAY_SIMULATOR_ACCOUNT
-              value: "6ee749cd-614b-411e-8a3c-aa92b19b79e5"
+              value: ""
             - name: PLATFORM_XUNHUPAY_APPID
               valueFrom: {secretKeyRef: {name: payment-simulation, key: appid}}
             - name: PLATFORM_XUNHUPAY_SECRET
@@ -53,18 +65,18 @@ spec:
             - name: PLATFORM_DAILY_FREE_ENDS_AT
               value: "2026-11-24T14:40:00+08:00"
             - name: PLATFORM_DAILY_FREE_TOKENS
-              value: "4096"
+              value: "100000"
             - name: PLATFORM_DAILY_FREE_MAX_OUTPUT
-              value: "768"
+              value: "4096"
             - name: PLATFORM_DAILY_FREE_MODELS
               value: '["deepseek-v4-flash-v2"]'
             - name: PLATFORM_DAILY_FREE_SPONSOR_KEY
               valueFrom:
                 secretKeyRef:
-                  name: r3-daily-trial-key
+                  name: first-release-daily-funding
                   key: token
             - name: PLATFORM_DAILY_FREE_SPONSOR_OWNER
-              value: "starbridge-r3-daily-demo-20261123"
+              value: "starbridge-first-release-daily-20261124"
             - name: PLATFORM_OFFICE_SKILLS_ENABLED
               value: "true"
             - name: PLATFORM_COST_CONSOLE_TEST_MODE
