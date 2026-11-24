@@ -446,6 +446,7 @@ egressGateway:
 
   config:
     maxToolCallBytes: 1048576
+    wordQualityEnabled: false
 
 # =============================================================================
 # REDIS (Job queue and state store)

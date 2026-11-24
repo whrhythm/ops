@@ -106,8 +106,13 @@
   "egressGateway": {
     "image": {
       "repository": "harbor.k3s.local/internal/platform-control",
-      "tag": "codeapi-20261105.1-egress@sha256:fbef31a613ec6aa95cf49819bd1f93156f9f77527d5f8fa3d0bc3ba10d7529a4",
+      "tag": "q1-word-quality-20261124.1@sha256:68d3a334ccc8604cd3e12dcd238e422f35568fbd68c4662e47c5934d74bcd620",
       "pullPolicy": "IfNotPresent"
+    },
+    "config": {"wordQualityEnabled": true},
+    "resources": {
+      "requests": {"cpu": "50m", "memory": "128Mi"},
+      "limits": {"cpu": "1", "memory": "512Mi"}
     }
   },
   "redis": {
