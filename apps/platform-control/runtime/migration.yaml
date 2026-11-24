@@ -25,7 +25,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: migrate
-          image: harbor.k3s.local/internal/platform-control@sha256:8c3467fa172d2204877c4d856f70300c1049c79705c805d4538d763f4b78dc74
+          image: harbor.k3s.local/internal/platform-control@sha256:6f4be953bb10d199c37335db8d47f701aefd6f63a74099ae77e25481e962db90
           command: [/bin/sh, -ec]
           args:
             - |
@@ -132,6 +132,7 @@ data:
         db.execute(text("GRANT SELECT, INSERT ON purchase_rates TO platform_api"))
         db.execute(text("GRANT SELECT, INSERT ON daily_free_buckets TO platform_api"))
         db.execute(text("GRANT SELECT, INSERT, UPDATE ON daily_free_calls TO platform_api"))
+        db.execute(text("GRANT SELECT, INSERT, UPDATE ON model_call_reservations TO platform_api"))
         db.execute(text("GRANT SELECT, INSERT, UPDATE ON cost_receipts, cost_sync_state TO platform_api"))
         db.execute(text("GRANT SELECT, INSERT ON audit_events TO platform_api"))
         db.execute(text("GRANT SELECT ON alembic_version TO platform_api, platform_worker"))
