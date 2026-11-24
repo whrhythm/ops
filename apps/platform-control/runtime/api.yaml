@@ -34,14 +34,14 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: harbor.k3s.local/internal/platform-control@sha256:ce4f37b6c9c0ad0ed3cc8574b98bb17083ff709b9a200b264f86368c6b5421bc
+          image: harbor.k3s.local/internal/platform-control@sha256:347fce6d4a30dda3ef0f68576724eed2928ce2e80995d092fff0c61340e907fd
           env:
             - name: PLATFORM_MODEL_TOOL_FAILURE_GUARD
               value: "true"
             - name: PLATFORM_MANAGED_CHAT_BUDGET_ENABLED
               value: "true"
             - name: PLATFORM_MANAGED_CHAT_PROFILES
-              value: '{"deepseek-v4-flash-v2":{"input_ceiling_per_million":"0.3","output_ceiling_per_million":"1.2","context_limit":1000000,"framing_tokens":1024},"gpt-6-sol":{"input_ceiling_per_million":"5","output_ceiling_per_million":"15","context_limit":1000000,"framing_tokens":1024,"image_token_bound":32768,"max_image_dimension":2048}}'
+              value: '{"deepseek-v4-flash-v2":{"native_models":["deepseek-v4-flash-v2","openai/deepseek-v4-flash-v2"],"input_ceiling_per_million":"0.3","output_ceiling_per_million":"1.2","context_limit":1000000,"framing_tokens":1024},"gpt-6-sol":{"native_models":["gpt-6-sol","openai/responses/gpt-6-sol"],"input_ceiling_per_million":"5","output_ceiling_per_million":"15","context_limit":1000000,"framing_tokens":1024,"image_token_bound":32768,"max_image_dimension":2048}}'
             - name: PLATFORM_MANAGED_CHAT_MAX_CALL_USD
               value: "1"
             - name: PLATFORM_MANAGED_CHAT_FREE_DAILY_USD
