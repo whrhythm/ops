@@ -66,7 +66,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: scan
-          image: harbor.k3s.local/internal/platform-control@sha256:7e3e21f4526891ae33617642a3f1fd3ff82c881af45a6ef186c5613e5bc77a10
+          image: harbor.k3s.local/internal/platform-control@sha256:ea84f2bc9ecb18164e9dc08fc1c53675d2a558a6e49c8eb85f1d31e1611a3774
           env:
             - name: STARBRIDGE_WORD_PAGES_ENABLED
               value: "true"
