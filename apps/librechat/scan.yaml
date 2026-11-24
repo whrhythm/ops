@@ -94,7 +94,7 @@ spec:
             - {name: tmp, mountPath: /tmp}
             - {name: tls, mountPath: /tls, readOnly: true}
         - name: word-pages
-          image: harbor.k3s.local/internal/office-word-pages@sha256:76ce90b2e19b78910d5e349bb0ed9ce2cf4ebef1a620d0ca681d480e4a49631d
+          image: harbor.k3s.local/internal/office-word-pages@sha256:d5cc75ca78f7a1651117865d1b7ad19f92b278304adfc6859567c5bfff3d159d
           resources:
             requests: {cpu: 50m, memory: 96Mi}
             limits: {cpu: "1", memory: 768Mi}
