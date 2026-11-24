@@ -153,7 +153,7 @@ spec:
             cpu: 300m
             memory: 256Mi
       - name: native-audit
-        image: harbor.k3s.local/internal/platform-control@sha256:83c28cfc3ad83a1f161853cd632c6d40bf4303b729c9f733a050cf5855d4e9a7
+        image: harbor.k3s.local/internal/platform-control@sha256:ec83c61fb8358fb087fcf67ffb44d31dec011870081c8f91c504f643b02885f0
         command:
         - python
         - -m
