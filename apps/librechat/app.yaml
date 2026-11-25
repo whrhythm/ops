@@ -84,8 +84,8 @@ data:
       scraperProvider: tavily
       rerankerType: none
       tavilyApiKey: "${SEARCH_TICKET_SECRET}"
-      tavilySearchUrl: http://office-web-search.librechat.svc.cluster.local:8080/search
-      tavilyExtractUrl: http://office-web-search.librechat.svc.cluster.local:8080/extract
+      tavilySearchUrl: "${TAVILY_SEARCH_URL}"
+      tavilyExtractUrl: "${TAVILY_EXTRACT_URL}"
       allowedAddresses: ["office-web-search.librechat.svc.cluster.local:8080"]
       tavilySearchOptions: {searchDepth: basic, maxResults: 4, includeImages: false, timeout: 22000}
       tavilyScraperOptions: {extractDepth: basic, format: markdown, timeout: 22000}
@@ -147,7 +147,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/starbridge-office@sha256:adf0fbbf3ff03ee630a1c04f010d22c7887cad98675c1014fe78ac2e71acf758
+          image: harbor.k3s.local/internal/starbridge-office@sha256:e569bbcea8b8536ae7007abec4cae3f0d075fb3a186c860e78dbdcfadbafac45
           env:
             - name: STARBRIDGE_PAYMENT_SUBJECT
               value: "*"
@@ -171,6 +171,10 @@ spec:
               value: "false"
             - name: STARBRIDGE_SEARCH_ORIGIN
               value: http://office-web-search.librechat.svc.cluster.local:8080
+            - name: TAVILY_SEARCH_URL
+              value: http://office-web-search.librechat.svc.cluster.local:8080/search
+            - name: TAVILY_EXTRACT_URL
+              value: http://office-web-search.librechat.svc.cluster.local:8080/extract
             - name: SEARCH_TICKET_SECRET
               valueFrom: {secretKeyRef: {name: office-web-search, key: ticket}}
             - name: MCP_SANDBOX_FRAME_ANCESTORS
