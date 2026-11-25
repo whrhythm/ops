@@ -24,7 +24,7 @@ data:
         identifiers: {slug: default-authentication-flow}
         attrs:
           name: Starbridge sign-in
-          title: 星桥账号登录
+          title: 星桥 · Starbridge
           designation: authentication
       # New accounts stay inactive until the native verification link is redeemed.
       # All names are CodeChat-specific; do not overwrite authentik's sample flow.
@@ -84,15 +84,42 @@ data:
         id: codechat-user-login
         identifiers: {name: codechat-enrollment-login}
       - model: authentik_flows.flowstagebinding
+        id: chinese-account-binding
         identifiers: {target: !KeyOf codechat-enrollment, stage: !KeyOf codechat-account-prompt, order: 10}
+        attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
       - model: authentik_flows.flowstagebinding
+        id: chinese-profile-binding
         identifiers: {target: !KeyOf codechat-enrollment, stage: !KeyOf codechat-profile-prompt, order: 11}
+        attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
       - model: authentik_flows.flowstagebinding
         identifiers: {target: !KeyOf codechat-enrollment, stage: !KeyOf codechat-user-write, order: 20}
       - model: authentik_flows.flowstagebinding
         identifiers: {target: !KeyOf codechat-enrollment, stage: !KeyOf starbridge-confirm-email, order: 30}
+      # This policy runs only after the enrollment email stage succeeds.
+      # Bind proof to both account and verified address. Editable profile
+      # attributes alone can never grant password recovery.
+      - model: authentik_policies_expression.expressionpolicy
+        id: record-registration-address
+        identifiers: {name: starbridge-record-registration-address}
+        attrs:
+          expression: |
+            from django.core.signing import Signer
+            plan = request.context["flow_plan"].context
+            owner = plan.get("pending_user")
+            receipt = plan.get("is_restored")
+            email = (plan.get("prompt_data", {}).get("email") or "").strip()
+            if not owner or not receipt or receipt.user_id != owner.pk or not email or owner.email != email:
+                return False
+            owner.attributes["starbridge_verified_address"] = Signer(salt="starbridge.recovery.v1").signature(str(owner.pk) + "|" + email)
+            owner.save(update_fields=["attributes"])
+            return True
       - model: authentik_flows.flowstagebinding
+        id: login-after-verification
         identifiers: {target: !KeyOf codechat-enrollment, stage: !KeyOf codechat-user-login, order: 100}
+        attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
+      - model: authentik_policies.policybinding
+        identifiers: {target: !KeyOf login-after-verification, policy: !KeyOf record-registration-address, order: 0}
+        attrs: {enabled: true}
       # The mailbox can open in a different browser. Start a new, fully
       # validated OIDC transaction there after the native login stage.
       - model: authentik_stages_redirect.redirectstage
@@ -113,11 +140,135 @@ data:
       - model: authentik_policies.policybinding
         identifiers: {target: !KeyOf starbridge-post-registration, policy: !KeyOf starbridge-registration-from-chat, order: 0}
         attrs: {enabled: true}
+      - model: authentik_flows.flow
+        id: starbridge-recovery
+        identifiers: {slug: starbridge-account-recovery}
+        attrs: {name: Starbridge account recovery, title: 找回星桥账号 · Recover your account, designation: recovery, authentication: require_unauthenticated}
+      - model: authentik_stages_identification.identificationstage
+        id: recovery-identify
+        identifiers: {name: starbridge-recovery-identify}
+        attrs: {user_fields: [username], pretend_user_exists: true}
+      - model: authentik_stages_email.emailstage
+        id: recovery-email
+        identifiers: {name: starbridge-recovery-email}
+        attrs: {use_global_settings: true, activate_user_on_success: false, template: email/password_reset.html, token_expiry: minutes=15, subject: 星桥密码重设 · Reset your Starbridge password, recovery_max_attempts: 5, recovery_cache_timeout: minutes=5}
+      - model: authentik_policies_expression.expressionpolicy
+        id: verified-recovery-owner
+        identifiers: {name: starbridge-verified-recovery-owner}
+        attrs:
+          expression: |
+            from django.core.signing import Signer
+            from django.utils.crypto import constant_time_compare
+            from authentik.core.models import User
+            owner = request.user
+            current = User.objects.filter(pk=owner.pk, is_active=True).first()
+            if not current or not owner.email or current.email != owner.email or current.is_superuser or str(current.type) not in ("internal", "external"):
+                return False
+            proof = current.attributes.get("starbridge_verified_address", "")
+            expected = Signer(salt="starbridge.recovery.v1").signature(str(current.pk) + "|" + current.email)
+            if not constant_time_compare(proof, expected):
+                ak_message("请使用已验证邮箱的账号。Use an account with a verified email.")
+                return False
+            return True
+      - model: authentik_stages_prompt.promptstage
+        id: recovery-password
+        identifiers: {name: starbridge-recovery-password}
+        attrs:
+          fields: [!KeyOf codechat-password, !KeyOf codechat-password-repeat]
+          validation_policies: [!KeyOf verified-recovery-owner]
+      - model: authentik_stages_user_write.userwritestage
+        id: recovery-write
+        identifiers: {name: starbridge-recovery-write}
+        attrs: {user_creation_mode: never_create}
+      - model: authentik_flows.flowstagebinding
+        identifiers: {target: !KeyOf starbridge-recovery, stage: !KeyOf recovery-identify, order: 10}
+      - model: authentik_flows.flowstagebinding
+        identifiers: {target: !KeyOf starbridge-recovery, stage: !KeyOf recovery-email, order: 20}
+      - model: authentik_flows.flowstagebinding
+        id: chinese-new-password-binding
+        identifiers: {target: !KeyOf starbridge-recovery, stage: !KeyOf recovery-password, order: 30}
+        attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
+      - model: authentik_flows.flowstagebinding
+        identifiers: {target: !KeyOf starbridge-recovery, stage: !KeyOf recovery-write, order: 40}
+      - model: authentik_flows.flowstagebinding
+        identifiers: {target: !KeyOf starbridge-recovery, stage: !KeyOf starbridge-chat-entry, order: 100}
+      - model: authentik_stages_prompt.prompt
+        id: en-username
+        identifiers: {name: starbridge-en-username}
+        attrs: {field_key: username, label: Username, type: username, required: true, placeholder: Username, placeholder_expression: false, order: 0}
+      - model: authentik_stages_prompt.prompt
+        id: en-password
+        identifiers: {name: starbridge-en-password}
+        attrs: {field_key: password, label: Password, type: password, required: true, placeholder: Password, placeholder_expression: false, order: 1}
+      - model: authentik_stages_prompt.prompt
+        id: en-password_repeat
+        identifiers: {name: starbridge-en-password_repeat}
+        attrs: {field_key: password_repeat, label: Confirm password, type: password, required: true, placeholder: Confirm password, placeholder_expression: false, order: 2}
+      - model: authentik_stages_prompt.prompt
+        id: en-name
+        identifiers: {name: starbridge-en-name}
+        attrs: {field_key: name, label: Display name, type: text, required: true, placeholder: Display name, placeholder_expression: false, order: 0}
+      - model: authentik_stages_prompt.prompt
+        id: en-email
+        identifiers: {name: starbridge-en-email}
+        attrs: {field_key: email, label: Email, type: email, required: true, placeholder: Email, placeholder_expression: false, order: 1}
+      - model: authentik_policies_expression.expressionpolicy
+        id: english-account-ui
+        identifiers: {name: starbridge-english-account-ui}
+        attrs:
+          expression: |
+            plan = request.context["flow_plan"].context
+            if "starbridge_ui_language" not in plan:
+                plan["starbridge_ui_language"] = request.http_request.COOKIES.get("authentik_language", "zh-cn")
+            return plan["starbridge_ui_language"].lower().startswith("en")
+      - model: authentik_stages_prompt.promptstage
+        id: english-account
+        identifiers: {name: starbridge-english-account}
+        attrs: {fields: [!KeyOf en-username, !KeyOf en-password, !KeyOf en-password_repeat]}
+      - model: authentik_flows.flowstagebinding
+        id: english-account-binding
+        identifiers: {target: !KeyOf codechat-enrollment, stage: !KeyOf english-account, order: 12}
+        attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
+      - model: authentik_policies.policybinding
+        identifiers: {target: !KeyOf chinese-account-binding, policy: !KeyOf english-account-ui, order: 0}
+        attrs: {enabled: true, negate: true}
+      - model: authentik_policies.policybinding
+        identifiers: {target: !KeyOf english-account-binding, policy: !KeyOf english-account-ui, order: 0}
+        attrs: {enabled: true, negate: false}
+      - model: authentik_stages_prompt.promptstage
+        id: english-profile
+        identifiers: {name: starbridge-english-profile}
+        attrs: {fields: [!KeyOf en-name, !KeyOf en-email]}
+      - model: authentik_flows.flowstagebinding
+        id: english-profile-binding
+        identifiers: {target: !KeyOf codechat-enrollment, stage: !KeyOf english-profile, order: 13}
+        attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
+      - model: authentik_policies.policybinding
+        identifiers: {target: !KeyOf chinese-profile-binding, policy: !KeyOf english-account-ui, order: 0}
+        attrs: {enabled: true, negate: true}
+      - model: authentik_policies.policybinding
+        identifiers: {target: !KeyOf english-profile-binding, policy: !KeyOf english-account-ui, order: 0}
+        attrs: {enabled: true, negate: false}
+      - model: authentik_stages_prompt.promptstage
+        id: english-new-password
+        identifiers: {name: starbridge-english-new-password}
+        attrs: {fields: [!KeyOf en-password, !KeyOf en-password_repeat], validation_policies: [!KeyOf verified-recovery-owner]}
+      - model: authentik_flows.flowstagebinding
+        id: english-new-password-binding
+        identifiers: {target: !KeyOf starbridge-recovery, stage: !KeyOf english-new-password, order: 31}
+        attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
+      - model: authentik_policies.policybinding
+        identifiers: {target: !KeyOf chinese-new-password-binding, policy: !KeyOf english-account-ui, order: 0}
+        attrs: {enabled: true, negate: true}
+      - model: authentik_policies.policybinding
+        identifiers: {target: !KeyOf english-new-password-binding, policy: !KeyOf english-account-ui, order: 0}
+        attrs: {enabled: true, negate: false}
       # Preserve existing user fields; serializer requires these when updating.
       - model: authentik_stages_identification.identificationstage
         identifiers: {name: default-authentication-identification}
         attrs:
           user_fields: [email, username]
+          recovery_flow: !KeyOf starbridge-recovery
           enrollment_flow: !KeyOf codechat-enrollment
       - model: authentik_core.group
         identifiers:
