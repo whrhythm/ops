@@ -18,6 +18,7 @@ data:
           branding_favicon: /static/dist/assets/starbridge/favicon-32x32.png
           branding_custom_css: |
             ak-flow-executor::part(footer) { display: none; }
+            ak-flow-executor::part(branding) { display: none; }
           attributes: {settings: {locale: zh-cn}}
       - model: authentik_flows.flow
         identifiers: {slug: default-authentication-flow}
@@ -92,6 +93,26 @@ data:
         identifiers: {target: !KeyOf codechat-enrollment, stage: !KeyOf starbridge-confirm-email, order: 30}
       - model: authentik_flows.flowstagebinding
         identifiers: {target: !KeyOf codechat-enrollment, stage: !KeyOf codechat-user-login, order: 100}
+      # The mailbox can open in a different browser. Start a new, fully
+      # validated OIDC transaction there after the native login stage.
+      - model: authentik_stages_redirect.redirectstage
+        id: starbridge-chat-entry
+        identifiers: {name: starbridge-enter-chat}
+        attrs: {mode: static, keep_context: false, target_static: "https://chat.k3s.local:30443/oauth/openid"}
+      - model: authentik_policies_expression.expressionpolicy
+        id: starbridge-registration-from-chat
+        identifiers: {name: starbridge-registration-from-chat}
+        attrs:
+          expression: |
+            params = request.http_request.session.get("authentik/flows/get", {})
+            return params.get("redirect_uri") == "https://chat.k3s.local:30443/oauth/openid/callback"
+      - model: authentik_flows.flowstagebinding
+        id: starbridge-post-registration
+        identifiers: {target: !KeyOf codechat-enrollment, stage: !KeyOf starbridge-chat-entry, order: 110}
+        attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
+      - model: authentik_policies.policybinding
+        identifiers: {target: !KeyOf starbridge-post-registration, policy: !KeyOf starbridge-registration-from-chat, order: 0}
+        attrs: {enabled: true}
       # Preserve existing user fields; serializer requires these when updating.
       - model: authentik_stages_identification.identificationstage
         identifiers: {name: default-authentication-identification}
