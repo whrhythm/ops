@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+generatorOptions:
+  disableNameSuffixHash: true
+configMapGenerator:
+  - name: starbridge-identity-assets
+    files:
+      - apple-touch-icon-180x180.png
+      - favicon-16x16.png
+      - favicon-32x32.png
+      - icon-192x192.png
+      - logo.svg
+      - manifest.webmanifest
+      - maskable-icon.png

@@ -32,7 +32,8 @@ data:
   OPENID_SCOPE: openid profile email platform-api
   OPENID_USE_PKCE: "true"
   OPENID_CALLBACK_URL: /oauth/openid/callback
-  OPENID_BUTTON_LABEL: Authentik
+  OPENID_BUTTON_LABEL: 使用星桥账号登录
+  OPENID_IMAGE_URL: /assets/logo.svg
   CODECHAT_PROVISION_URL: https://platform.k3s.local:30443/internal/v1/litellm/key
   CODECHAT_PROVISION_TIMEOUT_MS: "30000"
   STARBRIDGE_FILES_URL: https://platform.k3s.local:30443/internal/v1/workspace
@@ -114,6 +115,7 @@ spec:
       labels:
         app: librechat
       annotations:
+        starbridge.local/identity-brand: "20261125.1"
         starbridge.local/mcp-app-policy-revision: "20261118.6"
         starbridge.local/settings-revision: enterprise-e1-20261113.1
         starbridge.local/model-catalog-revision: gpt-6-sol-20261117.1
@@ -184,6 +186,13 @@ spec:
             capabilities:
               drop: [ALL]
           volumeMounts:
+            - {name: brand, mountPath: /app/client/dist/assets/logo.svg, subPath: logo.svg, readOnly: true}
+            - {name: brand, mountPath: /app/client/dist/assets/favicon-16x16.png, subPath: favicon-16x16.png, readOnly: true}
+            - {name: brand, mountPath: /app/client/dist/assets/favicon-32x32.png, subPath: favicon-32x32.png, readOnly: true}
+            - {name: brand, mountPath: /app/client/dist/assets/apple-touch-icon-180x180.png, subPath: apple-touch-icon-180x180.png, readOnly: true}
+            - {name: brand, mountPath: /app/client/dist/assets/icon-192x192.png, subPath: icon-192x192.png, readOnly: true}
+            - {name: brand, mountPath: /app/client/dist/assets/maskable-icon.png, subPath: maskable-icon.png, readOnly: true}
+            - {name: brand, mountPath: /app/client/dist/manifest.webmanifest, subPath: manifest.webmanifest, readOnly: true}
             - name: ca
               mountPath: /etc/librechat-ca
               readOnly: true
@@ -198,6 +207,8 @@ spec:
               mountPath: /app/client/public/images
               subPath: images
       volumes:
+        - name: brand
+          configMap: {name: starbridge-identity-assets}
         - name: ca
           configMap:
             name: librechat-ca

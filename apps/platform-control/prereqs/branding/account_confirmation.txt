@@ -1,0 +1,8 @@
+{% load i18n %}{% get_current_language as language %}{% autoescape off %}星桥 · Starbridge
+
+{% if language|slice:":2" == "en" %}Confirm this email address to activate your Starbridge account.{% else %}请确认这是你的邮箱，完成星桥账号注册。{% endif %}
+
+{{ url }}
+
+{% if language|slice:":2" == "en" %}If you did not request this email, you can ignore it.{% else %}如果你没有发起这项操作，可以忽略这封邮件。{% endif %}
+{% endautoescape %}

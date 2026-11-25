@@ -10,6 +10,21 @@ data:
     metadata:
       name: Platform control plane OIDC
     entries:
+      - model: authentik_brands.brand
+        identifiers: {domain: authentik-default}
+        attrs:
+          branding_title: 星桥
+          branding_logo: /static/dist/assets/starbridge/logo.svg
+          branding_favicon: /static/dist/assets/starbridge/favicon-32x32.png
+          branding_custom_css: |
+            ak-flow-executor::part(footer) { display: none; }
+          attributes: {settings: {locale: zh-cn}}
+      - model: authentik_flows.flow
+        identifiers: {slug: default-authentication-flow}
+        attrs:
+          name: Starbridge sign-in
+          title: 星桥账号登录
+          designation: authentication
       # New accounts stay inactive until the native verification link is redeemed.
       # All names are CodeChat-specific; do not overwrite authentik's sample flow.
       - model: authentik_flows.flow
@@ -136,6 +151,6 @@ data:
         identifiers:
           slug: platform
         attrs:
-          name: 开发空间
+          name: 星桥
           provider: !KeyOf platform-provider
           meta_launch_url: https://platform.k3s.local:30443/

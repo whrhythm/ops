@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - apisix-admin-policy.yaml
+  - authentik-blueprint.yaml
+  - authentik-route.yaml
+  - certificate.yaml
+  - namespace.yaml
+  - networkpolicy.yaml
+  - workspace-storageclass.yaml
+  - branding

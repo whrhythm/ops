@@ -60,6 +60,10 @@ spec:
           # The worker discovers both files as one named certificate. The
           # server serves the certificate selected by the default Brand.
           volumes:
+            - name: starbridge-brand
+              configMap: {name: starbridge-identity-assets}
+            - name: starbridge-account-mail
+              configMap: {name: starbridge-account-mail}
             - name: certs
               secret:
                 secretName: authentik-tls
@@ -69,6 +73,9 @@ spec:
                   - key: tls.key
                     path: authentik-web/tls.key
           volumeMounts:
+            - {name: starbridge-brand, mountPath: /web/dist/assets/starbridge, readOnly: true}
+            - {name: starbridge-brand, mountPath: /web/dist/assets/icons/icon_left_brand.png, subPath: icon-192x192.png, readOnly: true}
+            - {name: starbridge-account-mail, mountPath: /templates/email, readOnly: true}
             - name: certs
               mountPath: /certs
               readOnly: true

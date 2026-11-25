@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../../branding/starbridge
+configMapGenerator:
+  - name: starbridge-account-mail
+    files:
+      - base.html
+      - account_confirmation.html
+      - account_confirmation.txt
+      - password_reset.html
+      - password_reset.txt
+generatorOptions:
+  disableNameSuffixHash: true
+namespace: authentik
