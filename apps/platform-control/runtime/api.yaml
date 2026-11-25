@@ -34,7 +34,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: harbor.k3s.local/internal/platform-control@sha256:347fce6d4a30dda3ef0f68576724eed2928ce2e80995d092fff0c61340e907fd
+          image: harbor.k3s.local/internal/platform-control@sha256:35b27567648df10b4a920d27a86f69fc79625eb407aecf5a50f83f824839f3be
           env:
             - name: PLATFORM_MODEL_TOOL_FAILURE_GUARD
               value: "true"
