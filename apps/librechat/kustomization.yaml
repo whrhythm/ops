@@ -8,5 +8,6 @@ resources:
   - networkpolicy.yaml
   - route.yaml
   - scan.yaml
+  - web-search.yaml
   - support-quote.yaml
   - branding

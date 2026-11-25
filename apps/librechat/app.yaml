@@ -68,6 +68,9 @@ data:
       landingFooter: false
       agents: false
       runCode: true
+      webSearch: true
+      skills:
+        use: false
       memories: false
       multiConvo: false
       prompts: false
@@ -76,6 +79,17 @@ data:
       socialLogins: ["openid"]
     balance:
       enabled: false
+    webSearch:
+      searchProvider: tavily
+      scraperProvider: tavily
+      rerankerType: none
+      tavilyApiKey: "${SEARCH_TICKET_SECRET}"
+      tavilySearchUrl: http://office-web-search.librechat.svc.cluster.local:8080/search
+      tavilyExtractUrl: http://office-web-search.librechat.svc.cluster.local:8080/extract
+      allowedAddresses: ["office-web-search.librechat.svc.cluster.local:8080"]
+      tavilySearchOptions: {searchDepth: basic, maxResults: 4, includeImages: false, timeout: 22000}
+      tavilyScraperOptions: {extractDepth: basic, format: markdown, timeout: 22000}
+      scraperTimeout: 23000
     # LibreChat's encrypted per-user key mechanism is populated by the
     # CodeChat login callback; users cannot supply or replace this key.
     endpoints:
@@ -133,7 +147,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/starbridge-office@sha256:8b44e7d609a7a6a40f2aabe1dbd61f0d30a95a1d61b7b448aa04ee8fc284d063
+          image: harbor.k3s.local/internal/starbridge-office@sha256:adf0fbbf3ff03ee630a1c04f010d22c7887cad98675c1014fe78ac2e71acf758
           env:
             - name: STARBRIDGE_PAYMENT_SUBJECT
               value: "*"
@@ -154,7 +168,11 @@ spec:
             - name: STARBRIDGE_WORD_REVIEW_AUDIENCE
               value: "all"
             - name: STARBRIDGE_ENTERPRISE_ENABLED
-              value: "true"
+              value: "false"
+            - name: STARBRIDGE_SEARCH_ORIGIN
+              value: http://office-web-search.librechat.svc.cluster.local:8080
+            - name: SEARCH_TICKET_SECRET
+              valueFrom: {secretKeyRef: {name: office-web-search, key: ticket}}
             - name: MCP_SANDBOX_FRAME_ANCESTORS
               value: https://chat.k3s.local:30443
           command: [node, api/server/index.js]

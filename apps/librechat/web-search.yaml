@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: office-search-quota
+  namespace: librechat
+  annotations: {argocd.argoproj.io/sync-options: "Prune=false"}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: longhorn
+  resources: {requests: {storage: 128Mi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: office-web-search, namespace: librechat}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: office-web-search}}
+  template:
+    metadata: {labels: {app: office-web-search}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: search
+          image: harbor.k3s.local/internal/starbridge-office@sha256:adf0fbbf3ff03ee630a1c04f010d22c7887cad98675c1014fe78ac2e71acf758
+          command: [node, /app/search-server.cjs]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          ports: [{name: http, containerPort: 8080}]
+          resources: {requests: {cpu: 10m, memory: 48Mi}, limits: {cpu: 300m, memory: 160Mi}}
+          env:
+            - {name: SEARCH_USER_DAILY, value: "10"}
+            - {name: SEARCH_GLOBAL_DAILY, value: "100"}
+            - {name: SEARCH_TICKET_SECRET, valueFrom: {secretKeyRef: {name: office-web-search, key: ticket}}}
+            - {name: TAVILY_API_KEY, valueFrom: {secretKeyRef: {name: office-web-search, key: provider}}}
+          readinessProbe: {httpGet: {path: /health, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /health, port: http}, periodSeconds: 20}
+          volumeMounts: [{name: quota, mountPath: /data}]
+      volumes:
+        - name: quota
+          persistentVolumeClaim: {claimName: office-search-quota}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: office-web-search, namespace: librechat}
+spec:
+  selector: {app: office-web-search}
+  ports: [{name: http, port: 8080, targetPort: http}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: office-web-search, namespace: librechat}
+spec:
+  podSelector: {matchLabels: {app: office-web-search}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app: librechat}}}]
+      ports: [{protocol: TCP, port: 8080}]
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    - to:
+        - ipBlock: {cidr: 0.0.0.0/0, except: [0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/4]}
+      ports: [{protocol: TCP, port: 443}]
