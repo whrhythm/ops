@@ -147,7 +147,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/starbridge-office@sha256:8aea680c742ffd84998b40e598013462643bf9abf81cf8d239f01fd035e1b19b
+          image: harbor.k3s.local/internal/starbridge-office@sha256:ed8b9c258100ff6bc0df1fe7bc445cfcb9e4f98dd391a689b57128f657de8bb1
           env:
             - name: STARBRIDGE_PAYMENT_SUBJECT
               value: "*"
