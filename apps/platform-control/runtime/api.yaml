@@ -34,9 +34,11 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: harbor.k3s.local/internal/platform-control@sha256:a7e6b0222dcf9e83770f8ebce96fcb8558acac5d676c5f1d1a35dad086f01824
+          image: harbor.k3s.local/internal/platform-control@sha256:7ea7ba4b2b073866f9409deadd5366b74ce57046a305a0a4d4758722dff543c6
           env:
             - name: PLATFORM_MODEL_TOOL_FAILURE_GUARD
+              value: "true"
+            - name: PLATFORM_TOKEN_REFILL_ENABLED
               value: "true"
             - name: PLATFORM_MANAGED_CHAT_BUDGET_ENABLED
               value: "true"
