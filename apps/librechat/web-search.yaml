@@ -23,7 +23,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: search
-          image: harbor.k3s.local/internal/starbridge-office@sha256:258687d329245397f58fa1451edebc82b9dd2d06fb4f2c0640f024cc168f04d4
+          image: harbor.k3s.local/internal/starbridge-office@sha256:fb1418a0978405ac8d7777141e6b84f72fa8aa464951ce35f02a636e56611617
           command: [node, /app/search-server.cjs]
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
           ports: [{name: http, containerPort: 8080}]
