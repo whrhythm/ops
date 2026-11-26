@@ -147,7 +147,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: librechat
-          image: harbor.k3s.local/internal/starbridge-office@sha256:961e1851ad9ace77062f7a637a57fa2bc44223ea569e1caed78c93da29cc63c8
+          image: harbor.k3s.local/internal/starbridge-office@sha256:28f7f7f9f653c310ee64b1d89e60cdf967160c6aff00c1e6b168df5f3e43ef3a
           env:
             - name: STARBRIDGE_TOKEN_ONLY
               value: "true"
