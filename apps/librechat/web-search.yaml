@@ -23,13 +23,15 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: search
-          image: harbor.k3s.local/internal/starbridge-office@sha256:067de82dd9041d32d7bd4972fb7147d3b315406cf58bec7467dbcab07500e125
+          image: harbor.k3s.local/internal/starbridge-office@sha256:fe05163c928c6c27e54f415e73247b16d5f8c7032277c5d80607e3a1d717f9c6
           command: [node, /app/search-server.cjs]
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
           ports: [{name: http, containerPort: 8080}]
           resources: {requests: {cpu: 10m, memory: 48Mi}, limits: {cpu: 300m, memory: 160Mi}}
           env:
-            - {name: SEARCH_USER_DAILY, value: "10"}
+            - {name: SEARCH_USER_DAILY, value: "50"}
+            - {name: WEATHER_USER_HOURLY, value: "10"}
+            - {name: EXTRACT_USER_DAILY, value: "50"}
             - {name: SEARCH_GLOBAL_DAILY, value: "100"}
             - {name: SEARCH_TICKET_SECRET, valueFrom: {secretKeyRef: {name: office-web-search, key: ticket}}}
             - {name: TAVILY_API_KEY, valueFrom: {secretKeyRef: {name: office-web-search, key: provider}}}
