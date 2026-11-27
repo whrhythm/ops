@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This repo is an ArgoCD GitOps repository (repo: https://github.com/whrhythm/ops.git, branch `main`). Production Argo CD reads `apps/` and `argocd/`. Product source lives in `projects/`. The offline installer, release inventory and user guide live in `distribution/`. Use the build and test commands of the component you change.
+This repo is an ArgoCD GitOps repository (repo: https://github.com/whrhythm/ops.git, branch `main`). Production Argo CD reads `apps/` and `argocd/`. Product source lives in `projects/`. The user guide is `USER_GUIDE.md` at the repository root. The offline installer and release inventory live in `distribution/`. Use the build and test commands of the component you change.
 
 ## Layout
 

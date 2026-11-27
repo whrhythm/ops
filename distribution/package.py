@@ -64,6 +64,7 @@ def finish(transfer, output, source, distribution, current):
     for path in sorted(distribution.rglob("*")):
         if path.is_file() and "__pycache__" not in path.parts and path.name != "package.py":
             extras[path.relative_to(distribution).as_posix()] = path
+    extras["USER_GUIDE.md"] = distribution.parent / "USER_GUIDE.md"
     with tarfile.open(tmp, "a") as tar:
         for name,path in extras.items():
             add(tar,name,path)
