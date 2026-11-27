@@ -129,6 +129,37 @@ def simple_weather_answer(messages, stamp):
     return None
 
 
+def sponsored_image_messages(messages, model, settings):
+    """Keep original attachments in chat storage; adapt only the outgoing text-model context."""
+    from .managed_chat import base_policy
+    from .model_call_guard import stop
+
+    turns = [i for i, msg in enumerate(messages) if isinstance(msg, dict) and msg.get('role') == 'user']
+    if not turns:
+        return messages
+    result = messages
+    for index in turns:
+        msg = messages[index]
+        content = msg.get('content')
+        if not isinstance(content, list):
+            continue
+        def is_image(part):
+            return isinstance(part, dict) and part.get('type') == 'image_url'
+        if not any(is_image(part) for part in content):
+            continue
+        profile = base_policy(settings)['models'].get(model)
+        if not isinstance(profile, dict) or profile.get('image_token_bound'):
+            return messages
+        if index == turns[-1]:
+            stop('model_image_input_unavailable')
+        if result is messages:
+            result = list(messages)
+        result[index] = {**msg, 'content': [
+            {'type':'text', 'text':'[历史图片保存在原会话。当前模型未读取图像；需要其中内容时请用户提供识别后的文字。]'}
+            if is_image(part) else part for part in content]}
+    return result
+
+
 def sponsored_search_messages(messages, byte_limit=SEARCH_CONTEXT_BYTES):
     """Shorten only linked web-search excerpts in the outbound sponsored copy."""
     calls = {}
@@ -472,6 +503,11 @@ async def admit(request,db,env,settings,client,payload):
     clean={k:payload[k] for k in allowed if k in payload}
     if payload.get('n',1)!=1 or not isinstance(clean.get('messages'),list):
         return message(payload,'免费模型仅支持单个聊天回答。'),None
+    if managed:
+        messages = sponsored_image_messages(clean['messages'], clean['model'], settings)
+        if messages is not clean['messages']:
+            payload = {**payload, 'messages': messages}
+            clean['messages'] = messages
     if token_mode and payload.get('response_format') in (None,{'type':'text'}) and payload.get('tool_choice') in (None,'auto','none'):
         weather = simple_weather_answer(clean['messages'],stamp)
         if weather:

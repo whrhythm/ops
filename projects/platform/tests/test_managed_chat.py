@@ -222,3 +222,41 @@ def test_legacy_wallet_consent_needs_no_order_and_expires_each_day(harness,monke
                 assert await daily_chat.admit(request,db,env,s,c,body())==(None,None)
         asyncio.run(run())
         assert db.scalar(select(func.count()).select_from(ChatBalanceConsent))==1
+
+def test_sponsored_image_refusal_and_text_followup(harness, monkeypatch):
+    client, _ = harness
+    monkeypatch.setattr(daily_chat, 'account_for', lambda *a: None)
+    monkeypatch.setattr(daily_chat, 'catalog', lambda *a: [])
+    async def verified(*args):
+        return 'verified'
+    monkeypatch.setattr(guard, 'verify_price_ceiling', verified)
+    config = settings(daily_free_tokens=100000, daily_free_models=('model',), librechat_service_token='test',
+                      test_payments_enabled=False, capacity_upgrades_enabled=False, daily_free_sponsor_owner='QA',
+                      daily_free_sponsor_key=SimpleNamespace(get_secret_value=lambda: 'sponsor'))
+    config.managed_chat_free_daily_usd = '1'
+    image = {'type':'image_url', 'image_url':{'url':'data:image/png;base64,AAAA'}}
+    edit = {'role':'user', 'content':[image, {'type':'text','text':'去掉引用来源'}]}
+    counted = []
+    def counter(request):
+        counted.append(json.loads(request.content))
+        return httpx.Response(200, json={'total_tokens':20})
+    async def exercise(db, env):
+        req = SimpleNamespace(headers={}, app=None)
+        async with httpx.AsyncClient(transport=httpx.MockTransport(counter)) as c:
+            with pytest.raises(guard.GuardRejected, match='model_image_input_unavailable'):
+                await daily_chat.admit(req, db, env, config, c, {**body(), 'messages':[edit]})
+            assert not counted
+            assert db.scalar(select(func.count()).select_from(ModelCallReservation)) == 0
+            history = [edit, {'role':'assistant', 'content':'系统提示'}, {'role':'user','content':'你好'}]
+            reply, sponsored = await daily_chat.admit(req, db, env, config, c, {**body(), 'messages':history})
+            assert reply is None and sponsored
+            wire = json.dumps(counted[-1]['messages'], ensure_ascii=False)
+            assert '去掉引用来源' in wire and '你好' in wire and '历史图片' in wire and 'image_url' not in wire
+            assert history[0]['content'][0] == image
+            assert db.scalar(select(func.count()).select_from(ModelCallReservation)) == 1
+    with client.session_factory() as db:
+        asyncio.run(exercise(db, owner(db)))
+    vision = json.loads(config.managed_chat_profiles)
+    vision['model']['image_token_bound'] = 32768
+    config.managed_chat_profiles = json.dumps(vision)
+    assert daily_chat.sponsored_image_messages([edit], 'model', config) == [edit]

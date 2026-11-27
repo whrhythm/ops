@@ -41,6 +41,7 @@ def rejection_response(payload, code):
     """Finish the agent turn locally, with an explanation rather than a 400 loop."""
     from fastapi.responses import JSONResponse, StreamingResponse
     notices = {
+        'model_image_input_unavailable': '当前模型无法读取本轮图片。请先用「扫描/OCR」提取文字，或粘贴需要修改的段落，再告诉我怎样修改。',
         'office_tool_terminal_failure': '工具额度、权限或执行状态不允许继续，本轮已停止。已有成果保留，请在文件任务中查看；不会自动重新执行。',
         'office_tool_result_requires_review': '工具执行没有得到可安全重试的结果，本轮已停止。已有成果保留，请先核对原任务。',
         'office_code_correction_limit': '代码纠正后仍未通过，本轮已停止，避免重复执行。已生成的文件和原件都保留。',
