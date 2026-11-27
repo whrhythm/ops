@@ -10,6 +10,7 @@ from uuid import uuid4
 import httpx
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy import func, select
 
 from .auth import Principal
@@ -17,6 +18,7 @@ from .database import get_db
 from .models import CapacityAccount, CodeExecution, OfficeTask, now
 from .settings import get_settings
 from .workspace_gateway import own_environment
+from . import word_delivery
 
 FIELDS = ('code_runs_monthly', 'code_timeout_seconds', 'code_concurrency')
 # Transfers consume bounded I/O admission, not the plan's compute slots.
@@ -46,7 +48,7 @@ def usage(db, env):
             'memory_mib': 256, 'accounting': 'dispatched_runs', 'timezone': 'Asia/Shanghai'}
 
 
-def authenticate(token, settings):
+def code_identity(token, settings):
     if not settings.code_execution_enabled or not settings.code_execution_public_key:
         raise HTTPException(503, 'code_execution_unavailable')
     try:
@@ -57,9 +59,13 @@ def authenticate(token, settings):
                 not isinstance(claims['platform_subject'], str) or not 1 <= len(claims['platform_subject']) <= 255 or
                 claims['exp'] - claims['iat'] > 300):
             raise ValueError()
-        return Principal(settings.oidc_issuer, claims['platform_subject'])
+        return Principal(settings.oidc_issuer, claims['platform_subject']), claims['sub']
     except (jwt.InvalidTokenError, ValueError, TypeError, AttributeError):
         raise HTTPException(403, 'code_execution_identity_required') from None
+
+
+def authenticate(token, settings):
+    return code_identity(token, settings)[0]
 
 
 def reserve(db, principal, key, digest, operation='exec', transfer_bytes=0, task=None):
@@ -161,9 +167,24 @@ def output_expiry(value):
 
 def record_completion(task, row, result, expires_at):
     expiry = output_expiry(expires_at)
+    result = {k: v for k, v in result.items() if k not in ('_word_deliveries', '_word_save_required', '_output_expires_at')}
+    if any(word_delivery.word_outputs(result)):
+        result['_word_save_required'] = True
     task.result = {**result, '_output_expires_at': expiry.isoformat()} if expiry else result
     task.state = row.state = 'complete'
     row.completed_at = task.updated_at = now()
+
+
+async def delivery_response(db, task, authorization):
+    settings = get_settings()
+    principal, user_id = code_identity(authorization.removeprefix('Bearer '), settings)
+    saved = await word_delivery.keep_words(db, principal, settings, task, authorization, user_id)
+    result = {k: v for k, v in task.result.items() if k not in
+              ('_word_deliveries', '_word_save_required', '_output_expires_at')}
+    if not saved:
+        result['stderr'] = (result.get('stderr') or '') + '\n' + word_delivery.SAVE_WARNING
+    return Response(json.dumps(result).encode(), media_type='application/json',
+                    headers={'Cache-Control': 'no-store', 'X-Starbridge-Task': task.id})
 
 
 def task_view(task):
@@ -179,6 +200,22 @@ def task_view(task):
             {key: str(file[key])[:512] for key in ('id', 'name', 'session_id', 'storage_session_id') if key in file}
             for file in task.result.get('files', [])[:50] if isinstance(file, dict)
         ] if isinstance(task.result.get('files'), list) else []
+        saved = task.result.get('_word_deliveries', {})
+        if saved:
+            expired = expiry is not None and now() >= expiry
+            retained = []
+            for file in result['files']:
+                entry = saved.get(file.get('id'))
+                if entry:
+                    retained.append({**file, 'storage_session_id': entry['alias'], 'personal_path': entry['path']})
+                elif not expired:
+                    retained.append(file)
+            result['files'] = retained
+            if all(f.get('id') in saved for f in retained):
+                expiry = None
+        if task.result.get('_word_save_required') and any(
+                file_id not in saved for file_id, _, _ in word_delivery.word_outputs(task.result)):
+            result['stderr'] = (result.get('stderr') or '') + '\n' + word_delivery.SAVE_WARNING
     payload = task.payload or {}
     verified = task.result.get('_office_inputs') if isinstance(task.result, dict) else None
     files = verified if isinstance(verified, list) else payload.get('files')
@@ -297,7 +334,12 @@ def own_task(db, task_id, request):
 async def task_status(task_id: str, request: Request, response: Response, db=Depends(get_db)):
     task, authorization = own_task(db, task_id, request)
     response.headers['Cache-Control'] = 'no-store'
-    result = task_view(await recover_task(db, task, authorization))
+    task = await recover_task(db, task, authorization)
+    if task.state == 'complete' and task.result:
+        settings = get_settings()
+        principal, user_id = code_identity(authorization.removeprefix('Bearer '), settings)
+        await word_delivery.keep_words(db, principal, settings, task, authorization, user_id)
+    result = task_view(task)
     key = db.get(CodeExecution, task.id).request_key
     return {**result, 'call_key': key if re.fullmatch(r'[a-f0-9]{64}', key) else None}
 
@@ -402,7 +444,7 @@ async def gateway(path: str, request: Request, db=Depends(get_db)):
 async def forward_gateway(path, request, db, *, params):
     settings = get_settings()
     authorization = request.headers.get('authorization', '')
-    principal = authenticate(authorization.removeprefix('Bearer '), settings)
+    principal, user_id = code_identity(authorization.removeprefix('Bearer '), settings)
     env = own_environment(db, principal)
     if env.status == 'suspended':
         raise HTTPException(403, 'code_execution_account_disabled')
@@ -412,6 +454,13 @@ async def forward_gateway(path, request, db, *, params):
              (request.method == 'DELETE' and re.fullmatch(r'(files/[\w-]+/[\w-]+|sessions/[\w-]+/objects/[\w-]+)', path)))
     if not valid:
         raise HTTPException(404, 'code_execution_route_unavailable')
+    if request.method == 'GET' and path.startswith('download/') and params.get('kind') == 'user':
+        _, session, file_id = path.split('/')
+        if params.get('id') not in (None, user_id):
+            raise HTTPException(403, 'code_execution_identity_required')
+        archived = await run_in_threadpool(word_delivery.archived_download, db, principal, settings, env, session, file_id)
+        if archived is not None:
+            return archived
     body = bytearray()
     async for chunk in request.stream():
         body.extend(chunk)
@@ -450,8 +499,8 @@ async def forward_gateway(path, request, db, *, params):
             # the provider has lost the Redis keys that prevent re-execution.
             db.refresh(task, with_for_update=True)
             if task.result is not None:
-                return Response(json.dumps({k: v for k, v in task.result.items() if k != '_output_expires_at'}).encode(), media_type='application/json',
-                                headers={'Cache-Control': 'no-store', 'X-Starbridge-Task': row.id})
+                db.commit()
+                return await delivery_response(db, task, authorization)
             if task.state in ('cancelled', 'cancelling'):
                 raise HTTPException(409, 'office_task_cancelled')
             created = task.created_at.replace(tzinfo=timezone.utc) if task.created_at.tzinfo is None else task.created_at
@@ -460,8 +509,7 @@ async def forward_gateway(path, request, db, *, params):
             if task.state != 'accepted':
                 task = await recover_task(db, task, authorization)
                 if task.result is not None:
-                    return Response(json.dumps({k: v for k, v in task.result.items() if k != '_output_expires_at'}).encode(), media_type='application/json',
-                                    headers={'Cache-Control': 'no-store', 'X-Starbridge-Task': row.id})
+                    return await delivery_response(db, task, authorization)
                 raise HTTPException(409, 'office_task_already_submitted',
                                     headers={'Cache-Control': 'no-store', 'X-Starbridge-Task': row.id})
             task.state = 'running'
@@ -521,6 +569,8 @@ async def forward_gateway(path, request, db, *, params):
             db.commit()
             if task is not None and task.state == 'cancelled':
                 raise HTTPException(409, 'office_task_cancelled')
+            if task is not None and status < 300 and task.result is not None:
+                return await delivery_response(db, task, authorization)
         if status >= 400:
             raise HTTPException(status if status in (400, 403, 404, 409, 413, 429) else 503,
                                 'code_execution_provider_failed', headers=retry_headers)
