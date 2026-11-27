@@ -1,0 +1,10 @@
+{
+  "network": "isolated",
+  "entryAddresses": ["192.168.50.20"],
+  "chatHost": "chat.office.example",
+  "accountHost": "account.office.example",
+  "modelBaseUrl": "https://model.office.example/v1",
+  "model": "replace-with-site-model",
+  "modelKeyFile": null,
+  "caFile": null
+}

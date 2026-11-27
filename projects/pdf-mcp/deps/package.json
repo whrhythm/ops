@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@modelcontextprotocol/server-pdf": "^2.0.4"
+  }
+}

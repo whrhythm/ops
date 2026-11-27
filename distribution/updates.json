@@ -1,0 +1,57 @@
+[
+  {
+    "app": "librechat",
+    "workload": "librechat",
+    "container": "librechat",
+    "previous": "harbor.k3s.local/internal/starbridge-office@sha256:8aea680c742ffd84998b40e598013462643bf9abf81cf8d239f01fd035e1b19b",
+    "image": "harbor.k3s.local/internal/starbridge-office@sha256:2d6b0d22ce5130ac09491ae698c7f815248925713651dea643b36fc694c5507c",
+    "env": [
+      {
+        "name": "STARBRIDGE_TOKEN_ONLY",
+        "value": "true"
+      }
+    ]
+  },
+  {
+    "app": "librechat",
+    "workload": "office-web-search",
+    "container": "search",
+    "previous": "harbor.k3s.local/internal/starbridge-office@sha256:e569bbcea8b8536ae7007abec4cae3f0d075fb3a186c860e78dbdcfadbafac45",
+    "image": "harbor.k3s.local/internal/starbridge-office@sha256:fe05163c928c6c27e54f415e73247b16d5f8c7032277c5d80607e3a1d717f9c6",
+    "env": [
+      {
+        "name": "SEARCH_USER_DAILY",
+        "value": "50"
+      },
+      {
+        "name": "WEATHER_USER_HOURLY",
+        "value": "10"
+      },
+      {
+        "name": "EXTRACT_USER_DAILY",
+        "value": "50"
+      }
+    ]
+  },
+  {
+    "app": "platform-control",
+    "workload": "platform-api",
+    "container": "api",
+    "previous": "harbor.k3s.local/internal/platform-control@sha256:347fce6d4a30dda3ef0f68576724eed2928ce2e80995d092fff0c61340e907fd",
+    "image": "harbor.k3s.local/internal/platform-control@sha256:5559bf95aded6747cbe5cd19840ffa7f5aa6c59b9edd4e428ee373668a319d04",
+    "env": [
+      {
+        "name": "PLATFORM_TOKEN_REFILL_ENABLED",
+        "value": "true"
+      },
+      {
+        "name": "PLATFORM_MANAGED_CHAT_FREE_DAILY_USD",
+        "value": "1.00"
+      },
+      {
+        "name": "PLATFORM_DAILY_FREE_TOKENS",
+        "value": "1000000"
+      }
+    ]
+  }
+]

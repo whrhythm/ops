@@ -1,0 +1,17 @@
+/* Keep the in-message trigger compact. The separate dialog still displays the original. */
+button[data-chat-image-thumbnail],
+:where(.message-render) button.max-w-lg[aria-haspopup='dialog']:has(> img) {
+  width: fit-content;
+  max-width: min(100%, 15rem);
+  height: auto !important;
+  vertical-align: top;
+}
+
+button[data-chat-image-thumbnail] > img,
+:where(.message-render) button.max-w-lg[aria-haspopup='dialog'] > img {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: min(10rem, 35vh);
+  object-fit: contain;
+}

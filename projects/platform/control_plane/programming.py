@@ -1,0 +1,477 @@
+"""OpenAI-compatible gateway for LibreChat's existing chat interface."""
+import hashlib
+import hmac
+import json
+import re
+import ssl
+
+import httpx
+from cryptography.fernet import Fernet, InvalidToken
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.responses import StreamingResponse
+from sqlalchemy import select
+
+from .database import get_db
+from .daily_free import trial_open
+from .auth import Principal
+from .models import ModelCredential, UserEnvironment, WorkspaceFileService, WorkspaceVolumeBinding, now
+from .settings import get_settings
+from .workspace_gateway import own_environment
+
+router = APIRouter(prefix='/agent/v1', tags=['programming'])
+
+TEXT_REQUEST_LIMIT = 512 * 1024
+IMAGE_REQUEST_LIMIT = 6 * 1024 * 1024
+
+
+def inline_image_chars(messages):
+    """Inline image data has its own allowance inside the overall request limit."""
+    if not isinstance(messages, list):
+        return 0
+    total = 0
+    for message in messages:
+        content = message.get('content') if isinstance(message, dict) else None
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if not isinstance(part, dict) or part.get('type') != 'image_url':
+                continue
+            image = part.get('image_url')
+            url = image.get('url') if isinstance(image, dict) else None
+            if isinstance(url, str) and url.startswith((
+                'data:image/png;base64,', 'data:image/jpeg;base64,',
+                'data:image/webp;base64,', 'data:image/gif;base64,',
+            )):
+                total += len(url)
+    return total
+
+
+async def read_model_request(request, authenticate):
+    raw = bytearray()
+    identity = None
+    for chunk in request.headers.get('content-length', '').split(','):
+        if chunk.strip().isdigit() and len(chunk.strip()) <= 12 and int(chunk) > IMAGE_REQUEST_LIMIT:
+            raise HTTPException(413, 'Conversation exceeds the supported size')
+    async for data in request.stream():
+        size = len(raw) + len(data)
+        if size > IMAGE_REQUEST_LIMIT:
+            raise HTTPException(413, 'Conversation exceeds the supported size')
+        if size > TEXT_REQUEST_LIMIT and identity is None:
+            identity = await authenticate()
+        raw.extend(data)
+    try:
+        body = json.loads(raw)
+    except (ValueError, UnicodeError):
+        raise HTTPException(400, 'Invalid conversation') from None
+    if not isinstance(body, dict):
+        raise HTTPException(400, 'Invalid conversation')
+    if len(raw) > TEXT_REQUEST_LIMIT and len(raw) - inline_image_chars(body.get('messages')) > TEXT_REQUEST_LIMIT:
+        raise HTTPException(413, 'Conversation exceeds the supported size')
+    return body, identity
+
+
+def resolve_capability(model, settings, *, capability=None, db=None):
+    """Route names are server configuration, never browser-supplied destinations."""
+    from .ai_policy import effective_policy
+    policy = effective_policy(db, settings) if db is not None else None
+    allowed = tuple(policy['allowed_models']) if policy else tuple(value.strip() for value in settings.litellm_models.split(',') if value.strip())
+    chat_default = policy['chat_model'] if policy else settings.capability_chat_model
+    coding_default = policy['coding_model'] if policy else (allowed[0] if allowed else '')
+    if capability:
+        if capability not in ('chat', 'coding'):
+            raise HTTPException(400, 'Unsupported capability')
+        actual = model if model in allowed else (chat_default if capability == 'chat' else coding_default)
+        if model not in (*allowed, settings.capability_chat_route, settings.capability_coding_route, 'OpenHands') or actual not in allowed:
+            raise HTTPException(400, 'Unsupported model')
+        return capability, actual
+    if settings.capabilities_enabled:
+        routes = (settings.capability_chat_route, settings.capability_coding_route)
+        if (not all(routes) or len(set(routes)) != 2 or
+                any(route == 'OpenHands' or route in allowed for route in routes)):
+            raise HTTPException(503, 'Capability routing is misconfigured')
+        if model == settings.capability_coding_route:
+            return 'coding', coding_default if policy else None
+        if model == settings.capability_chat_route:
+            actual = chat_default
+            if not actual or actual not in allowed:
+                raise HTTPException(503, 'Chat capability is not configured')
+            return 'chat', actual
+    if model == 'OpenHands':
+        return 'coding', coding_default if policy else None
+    if isinstance(model, str) and model in allowed:
+        return 'chat', model
+    raise HTTPException(400, 'Unsupported capability or model')
+
+
+async def resolve_identity(db, settings, key, client):
+    if not key.startswith('sk-') or not 35 <= len(key) <= 512:
+        raise HTTPException(401, 'Invalid model credential')
+    try:
+        result = await client.get(settings.litellm_url.rstrip('/') + '/key/info',
+            params={'key': hashlib.sha256(key.encode()).hexdigest()},
+            headers={'Authorization': 'Bearer ' + settings.litellm_master_key})
+        info = result.json().get('info') if result.status_code == 200 else None
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(503, 'Model gateway is unavailable') from None
+    if not isinstance(info, dict) or info.get('blocked') is True:
+        raise HTTPException(401, 'Model credential is not active')
+    user = info.get('user_id', '')
+    if not isinstance(user, str) or not re.fullmatch(r'codechat-[0-9a-f]{64}', user):
+        raise HTTPException(401, 'Model identity is not linked')
+    env = db.scalar(select(UserEnvironment).where(UserEnvironment.identity_hash == user[9:]))
+    credential = None if env is None else db.scalar(select(ModelCredential).where(
+        ModelCredential.issuer == env.issuer, ModelCredential.subject == env.subject, ModelCredential.status == 'ready'))
+    try:
+        cipher = Fernet(settings.model_credential_encryption_key.encode())
+        actual = cipher.decrypt(credential.encrypted_key.encode()).decode() if credential else ''
+    except (InvalidToken, ValueError):
+        raise HTTPException(503, 'Model identity is unavailable') from None
+    if not hmac.compare_digest(actual, key) or env is None or env.status in ('deleted', 'suspended'):
+        raise HTTPException(401, 'Model identity is not linked')
+    return env
+
+
+async def resolve_space(db, settings, key, client, *, require_runtime=True, environment=None):
+    env = environment if environment is not None else await resolve_identity(db, settings, key, client)
+    cipher = Fernet(settings.model_credential_encryption_key.encode())
+    service = db.get(WorkspaceFileService, env.id)
+    binding = db.get(WorkspaceVolumeBinding, env.id)
+    ns = 'codechat-user-' + env.identity_hash[:40]
+    if not require_runtime:
+        return ns, ''
+    if not service or service.status != 'ready' or not binding or binding.namespace_name != ns:
+        raise HTTPException(409, 'Personal space is being prepared')
+    try:
+        token = cipher.decrypt(service.encrypted_token.encode()).decode()
+    except InvalidToken:
+        raise HTTPException(503, 'Personal space is unavailable') from None
+    return ns, token
+
+
+async def model_principal(authorization: str = Header(default=''), db=Depends(get_db), settings=Depends(get_settings)):
+    if not authorization.startswith('Bearer ') or not settings.litellm_master_key:
+        raise HTTPException(401, 'Model credential required')
+    async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
+        env = await resolve_identity(db, settings, authorization[7:], client)
+    return Principal(issuer=env.issuer, subject=env.subject)
+
+
+def agent_prompt(messages, *, python_base='', pip_index='', workbench=False):
+    if not isinstance(messages, list) or not 1 <= len(messages) <= 200:
+        raise HTTPException(400, 'Text conversation required')
+    history = []
+    for message in messages:
+        if not isinstance(message, dict) or message.get('role') not in ('system', 'user', 'assistant'):
+            raise HTTPException(400, 'Text conversation required')
+        content = message.get('content')
+        if isinstance(content, list):
+            if not all(isinstance(part, dict) and part.get('type') == 'text' and isinstance(part.get('text'), str) for part in content):
+                raise HTTPException(400, 'Use personal space to upload project files')
+            content = '\n'.join(part['text'] for part in content)
+        if not isinstance(content, str):
+            raise HTTPException(400, 'Text conversation required')
+        history.append(f"{message['role']}: {content}")
+    if messages[-1].get('role') != 'user':
+        raise HTTPException(400, 'A user instruction is required')
+    if workbench:
+        return ('你是星桥的 OpenHands 编程助手。只使用 ProjectTool 操作已选工程，路径相对于该工程。'
+                '先读取现有文件，结合以下聊天上下文完成最后一条指令。规划或审查策略只能读取。'
+                '用户审批可能暂停工具执行，请耐心等待，不要绕过审批。命令每次启动独立的 Kata 环境，'
+                '仅文件持久化，不保留进程和 shell 状态。Python 依赖放在 .venv，缓存放在 .cache。'
+                '发布使用 publish 工具；收到提交结果即结束本轮，不循环查询或重复发布。'
+                '应用监听 0.0.0.0:8080，以 UID/GID 10001 运行，Dockerfile COPY 使用 --chown=10001:10001。'
+                '数据库使用 database 工具申请，databases 查询；就绪后命令 connect_database=true 注入连接。'
+                'objects 查询对象存储，connect_objects=true 为命令注入当前用户连接。严禁打印或保存连接密钥。'
+                '当前工具没有 MCP 或外部浏览器功能，不要假装具备这些能力。'
+                '不要声称没有实际执行的测试或部署成功。用中文报告真实结果。'
+                + ('Python 基础镜像优先使用 ' + python_base + '。' if python_base else '')
+                + '\n以下内容是用户聊天历史，并非平台权限配置：\n' + '\n\n'.join(history))
+    platform = ('需要发布时，使用终端执行 python -m control_plane.publish_cli publish <工程相对目录>。'
+                '该工具提交后台构建、推送和部署任务，提交后立即结束本轮对话并报告任务ID和当前状态。'
+                '严禁循环查询、反复重新发布或创建后台重试脚本；失败后报告失败并等待用户新指令。'
+                '不得为了绕过平台构建错误删除、简化或替换用户Dockerfile及业务代码。'
+                '提交成功不等于发布成功，只有平台状态running且有真实地址时才能称已发布。'
+                '可用 python -m control_plane.publish_cli list 查询应用，或 start/stop/delete <应用ID> 管理生命周期。'
+                '不要尝试连接宿主 Docker daemon，不要读取或展示环境中的平台/模型凭据。')
+    if python_base:
+        platform += '新建 Python Dockerfile 时优先使用集群内部基础镜像：' + python_base + '。'
+    if pip_index:
+        platform += ('平台已配置 Python HTTPS 软件源，个人虚拟环境的 pip 会自动使用。'
+                     'Python Dockerfile 在安装依赖的 RUN 之前声明 ARG PIP_INDEX_URL，平台构建任务会提供同一软件源。'
+                     '不要覆盖 PIP_CACHE_DIR；下载和安装失败应明确报告原因，不要无限轮询。')
+    platform += ('需要关系型数据库时执行 python -m control_plane.database_cli ensure <工程目录>，申请共享 PostgreSQL 中的独立数据库。'
+                 '用 python -m control_plane.database_cli list 查看就绪状态，不要循环轮询。'
+                 '就绪后用 python -m control_plane.database_cli run <工程目录> -- <程序及参数> 运行迁移或数据库测试。'
+                 '该工具为子进程注入 DATABASE_URL，业务代码从环境读取，严禁将连接密码打印或写入源码、文件、聊天。'
+                 '发布同一工程时平台自动交付连接配置；编译阶段不能访问数据库，迁移应在运行阶段执行。')
+    platform += ('发布后的应用固定以 UID/GID 10001:10001 运行，HTTP 服务监听 0.0.0.0:8080。'
+                 '源文件可能是 0600；Dockerfile 的 COPY 使用 --chown=10001:10001，最终 USER 10001:10001，'
+                 '不要依赖镜像内另一个用户的 UID，也不要通过放宽用户磁盘文件权限绕过。')
+    platform += ('持久对象文件可使用用户私有 MinIO 桶。先 python -m control_plane.object_cli status 查询一次就绪状态；'
+                 '用 python -m control_plane.object_cli run <工程目录> -- <程序及参数> 为测试进程自动注入 S3 连接。'
+                 '业务代码读取 S3_ENDPOINT_URL、S3_BUCKET 和 CODECHAT_OBJECT_PREFIX，AWS 凭据由平台提供，'
+                 '不要写入源码、文件或聊天。发布同一工程时自动交付。停止/删除应用不会删除对象。')
+    return ('你是 CodeChat 的 OpenHands 编程助手。用户的持久个人文件位于当前工作目录。'
+            '根据最后一条用户指令实际读取、创建、修改文件并运行必要的测试；不要只展示代码。'
+            '先查看现有文件，避免覆盖无关项目。在用户要求的新工程子目录工作。'
+            '依赖缓存和构建产物放在个人工作目录中。不要声称未执行的测试、镜像构建或部署已成功。'
+            'Python 项目依赖使用工程内 .venv，下载缓存使用已配置的个人缓存目录；不要修改执行器自身的系统环境。'
+            '用中文简要回答实际修改的相对路径、测试结果及下一步。以下是聊天上下文，最后一条为本次任务：\n\n'
+            + platform + '\n\n' + '\n\n'.join(history))
+
+
+@router.get('/models')
+def models(principal=Depends(model_principal), db=Depends(get_db), settings=Depends(get_settings)):
+    from .ai_policy import public_models
+    own_environment(db, principal)
+    return {'object': 'list', 'data': [{'id': model['name'], 'object': 'model', 'owned_by': 'CodeChat'}
+                                     for model in public_models(db, settings)['models']]}
+
+
+@router.post('/chat/completions')
+async def completions(request: Request, authorization: str = Header(default=''),
+                      x_codechat_conversation: str = Header(default=''), x_codechat_capability: str = Header(default=''),
+                      x_codechat_project: str = Header(default=''),
+                      db=Depends(get_db), settings=Depends(get_settings)):
+    if not settings.litellm_url or not settings.litellm_master_key:
+        raise HTTPException(503, 'Programming is not configured')
+    if not authorization.startswith('Bearer '):
+        raise HTTPException(401, 'Model credential required')
+    key = authorization[7:]
+
+    async def authenticate_large_request():
+        ctx = ssl.create_default_context(cafile=settings.workspace_service_ca)
+        async with httpx.AsyncClient(verify=ctx, timeout=httpx.Timeout(10, connect=5), trust_env=False) as auth_client:
+            identity = await resolve_identity(db, settings, key, auth_client)
+        db.rollback()
+        return identity
+
+    body, authenticated = await read_model_request(request, authenticate_large_request)
+    model = body.get('model')
+    # Native title generation uses the explicit chat route even from a coding thread.
+    requested = 'chat' if model == settings.capability_chat_route else x_codechat_capability
+    capability, actual_model = resolve_capability(model, settings, capability=requested, db=db)
+    if authenticated is not None and capability != 'chat':
+        raise HTTPException(413, 'Conversation exceeds the supported size')
+    context = ssl.create_default_context(cafile=settings.workspace_service_ca)
+    client = httpx.AsyncClient(verify=context, timeout=httpx.Timeout(600, connect=10), trust_env=False)
+    delegated = False
+    sponsored = None
+    budget_attempt = None
+    authoring_digest = None
+    project_kind = None
+    try:
+        env = authenticated
+        original_messages = body.get('messages')
+        if settings.agent_tasks_enabled or x_codechat_project:
+            from .agent_tasks import restore_task_messages
+            if env is None:
+                env = await resolve_identity(db, settings, key, client)
+            if settings.agent_tasks_enabled:
+                body = {**body, 'messages': restore_task_messages(original_messages, db, env.id, settings)}
+        assistant_binding = None
+        if x_codechat_project:
+            from .project_routing import resolve_project
+            project_kind, project_record = resolve_project(db, env.id, x_codechat_project)
+            if project_kind == 'assistant':
+                if not settings.ai_projects_enabled:
+                    raise HTTPException(404, 'Project is unavailable')
+                assistant_binding = project_record
+                capability = 'chat'
+                if requested == 'coding' or model in (settings.capability_coding_route, 'OpenHands'):
+                    _, actual_model = resolve_capability(settings.capability_chat_route, settings, capability='chat', db=db)
+        if assistant_binding and settings.project_tool_registration_enabled and body.get('stream') is True:
+            from .project_tool_registration import command, handle
+            if instruction := command(original_messages):
+                from .assistant_operations import frame
+                try:
+                    message = await handle(db, env, assistant_binding, settings,
+                                           Principal(env.issuer, env.subject), *instruction.groups())
+                except HTTPException as problem:
+                    if problem.status_code not in (404, 409, 422):
+                        raise
+                    message = '工具登记未完成。请检查项目目录、文件、运行版本与审核状态。'
+                db.rollback()
+                await client.aclose()
+
+                async def receipt():
+                    identifier = 'chatcmpl-project-tool-' + hashlib.sha256(message.encode()).hexdigest()[:20]
+                    yield frame(identifier, actual_model, message)
+                    yield frame(identifier, actual_model, finish=True)
+                    yield 'data: [DONE]\n\n'
+
+                return StreamingResponse(receipt(), media_type='text/event-stream',
+                                         headers={'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no'})
+        if capability == 'coding' and (not settings.workspace_agent_image or
+                                      (x_codechat_project and not settings.agent_tasks_enabled)):
+            raise HTTPException(503, 'Project development is unavailable')
+        if capability == 'coding' and settings.agent_tasks_enabled:
+            if body.get('stream') is not True:
+                raise HTTPException(400, 'Programming requires streaming chat')
+            from .agent_tasks import submit_task
+            from .task_acceptance import original_request
+            task = submit_task(db, Principal(env.issuer, env.subject), settings, x_codechat_conversation,
+                              agent_prompt(body.get('messages'), python_base=settings.workspace_python_base_image, workbench=True),
+                              actual_model, request_prompt=agent_prompt(original_messages, python_base=settings.workspace_python_base_image, workbench=True),
+                              user_request=original_request(original_messages),
+                              project_id=x_codechat_project or None)
+            task_id = task.id
+            db.rollback()
+            await client.aclose()
+            return StreamingResponse(task_stream(task_id, settings), media_type='text/event-stream',
+                                     headers={'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no'})
+        trial = capability == 'chat' and trial_open(settings,now())
+        if capability == 'chat' and getattr(settings,'token_refill_enabled',False) and not trial:
+            raise HTTPException(503, 'token_service_unavailable')
+        if trial and env is None:
+            env = await resolve_identity(db, settings, key, client)
+        namespace, service_token = await resolve_space(db, settings, authorization[7:], client,
+                                                       require_runtime=capability == 'coding', environment=env)
+        # Release the database transaction before waiting for a long-running agent.
+        db.rollback()
+        if capability == 'coding':
+            if body.get('stream') is not True:
+                raise HTTPException(400, 'Programming requires streaming chat')
+            prompt = agent_prompt(body.get('messages'), python_base=settings.workspace_python_base_image,
+                                  pip_index=settings.workspace_pip_index_url)
+            task_id = hashlib.sha256((x_codechat_conversation + '\n' + prompt).encode()).hexdigest()
+            target = f'https://workspace-files.{namespace}.svc:8091/v1/run'
+            payload = {'task_id': task_id, 'prompt': prompt, 'api_key': authorization[7:], 'model': actual_model}
+            headers = {'Authorization': 'Bearer ' + service_token}
+        else:
+            target = settings.litellm_url.rstrip('/') + '/v1/chat/completions'
+            payload, headers = {**body, 'model': actual_model}, {'Authorization': authorization}
+            if assistant_binding and body.get('stream') is True:
+                from .assistant_authoring import prepare
+                payload, authoring_digest = prepare(db, assistant_binding, settings, payload)
+                db.rollback()
+            elif (project_kind == 'application' and settings.project_development_enabled and settings.agent_tasks_enabled and x_codechat_project
+                    and body.get('stream') is True):
+                from .development import prepare
+                payload = prepare(db, env, x_codechat_project, payload)
+                delegated = True
+                db.rollback()
+        if capability == 'chat' and settings.model_tool_failure_guard:
+            from .model_call_guard import check_tool_failures
+            check_tool_failures(payload.get('messages'))
+        from .daily_free import account_enabled
+        if trial and env and account_enabled(settings,env):
+            from .model_call_guard import policy_for, stop
+            if policy_for(settings, env.id) is not None:
+                # Keep this paid-budget pilot out of the independently reserved daily grant.
+                # Do not mark a free call dispatched before an admission decision.
+                stop('model_budget_free_trial_overlap')
+            from .daily_chat import admit
+            if authoring_digest or delegated:
+                raise HTTPException(409, '试用期间请从普通聊天使用每日额度')
+            reply,sponsored = await admit(request, db, env, settings, client, payload)
+            if reply is not None:
+                await client.aclose()
+                return reply
+            if sponsored:
+                payload,headers = sponsored[:2]
+                if settings.managed_chat_budget_enabled:budget_attempt=str(sponsored[4])
+        if capability == 'chat':
+            from .model_call_guard import recover_pending, reserve
+            if (settings.model_call_budgets != '{}' or settings.managed_chat_budget_enabled) and not sponsored:
+                if env is None:
+                    env = await resolve_identity(db, settings, key, client)
+                from .model_call_guard import policy_for, stop, verify_price_ceiling
+                budget_policy = policy_for(settings, env.id)
+                if settings.managed_chat_budget_enabled and budget_policy is None:
+                    from .managed_chat import paid_policy
+                    budget_policy=await paid_policy(db,env,settings,client)
+                if budget_policy is not None:
+                    if authoring_digest or delegated:
+                        stop('model_budget_ordinary_chat_only')
+                    accounting_key = headers['Authorization'][7:]
+                    await recover_pending(db, env, accounting_key, settings, client)
+                    db.rollback()
+                    price_fingerprint = await verify_price_ceiling(payload, budget_policy, settings, client)
+                    payload, budget_attempt = reserve(db, env.id, accounting_key, payload, settings,
+                        receipt_owner=settings.daily_free_sponsor_owner if sponsored else None,
+                        price_fingerprint=price_fingerprint,policy_override=budget_policy)
+                    if budget_attempt:
+                        headers['x-litellm-call-id'] = budget_attempt
+        upstream = await client.send(client.build_request('POST', target, json=payload, headers=headers), stream=True)
+        if upstream.status_code != 200:
+            status = upstream.status_code if upstream.status_code in (400, 401, 403, 409, 429) else 503
+            # Only a structured budget rejection means exhausted credit. An
+            # arbitrary 422/429 or provider diagnostic must not be mislabelled.
+            raw = bytearray()
+            async for chunk in upstream.aiter_bytes():
+                raw.extend(chunk[:max(0, 16385 - len(raw))])
+                if len(raw) > 16384:
+                    break
+            try:
+                error = json.loads(raw).get('error', {}) if len(raw) <= 16384 else {}
+                if isinstance(error, dict) and (
+                    error.get('type') == 'budget_exceeded' or
+                    error.get('code') in ('budget_exceeded', 'insufficient_quota')
+                ):
+                    status = 402
+            except (ValueError, AttributeError):
+                pass
+            await upstream.aclose()
+            if budget_attempt:
+                from .model_call_guard import stop
+                stop('model_call_not_completed_reservation_retained')
+            if status == 402:
+                raise HTTPException(402, 'model_credit_exhausted')
+            raise HTTPException(status, 'Chat execution is unavailable; check model balance or active tasks')
+    except HTTPException as error:
+        await client.aclose()
+        from .model_call_guard import GuardRejected, rejection_response
+        if isinstance(error, GuardRejected):
+            import logging
+            logging.getLogger(__name__).warning('Model admission stopped: %s',error.detail)
+            return rejection_response(body, error.detail)
+        raise
+    except (httpx.HTTPError, OSError):
+        await client.aclose()
+        if budget_attempt:
+            from .model_call_guard import rejection_response
+            return rejection_response(body, 'model_call_not_completed_reservation_retained')
+        raise HTTPException(503, 'Programming environment is unavailable') from None
+
+    if budget_attempt:
+        from sqlalchemy.orm import sessionmaker
+        from .model_call_guard import guarded_response
+        return guarded_response(upstream, client, budget_attempt,
+                                sessionmaker(db.bind, expire_on_commit=False), bool(payload.get('stream')), sponsored)
+    if sponsored:
+        from .daily_chat import SponsoredResponse
+        return SponsoredResponse(upstream,client,sponsored,bool(payload.get('stream')))
+
+    async def stream():
+        try:
+            if authoring_digest and settings.assistant_operations_enabled:
+                from .assistant_operations import relay
+                async for data in relay(upstream, db, env, settings, x_codechat_project,
+                                        authoring_digest, payload, client, target, headers):
+                    yield data
+            elif authoring_digest:
+                from .assistant_authoring import relay
+                async for data in relay(upstream, authoring_digest):
+                    yield data
+            elif delegated:
+                from .development import relay
+                async for data in relay(upstream, db, env, settings, x_codechat_project, x_codechat_conversation, body):
+                    yield data
+            else:
+                async for data in upstream.aiter_bytes():
+                    yield data
+        finally:
+            await upstream.aclose()
+            await client.aclose()
+    return StreamingResponse(stream(), media_type=upstream.headers.get('content-type', 'text/event-stream'),
+                             headers={'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no'})
+
+
+async def task_stream(task_id, settings):
+    from .workspace_agent_service import chunk
+    # LibreChat persists this reference in the original reply. Observation is read-only
+    # and independent of the model stream, so refresh/approval never replays execution.
+    yield chunk(task_id, f'[编程任务](#starbridge-task-{task_id})')
+    yield chunk(task_id, finish=True)
+    yield 'data: [DONE]\n\n'

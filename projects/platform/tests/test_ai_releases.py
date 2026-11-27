@@ -1,0 +1,444 @@
+from uuid import uuid4
+import json
+import jwt
+import httpx
+import pytest
+from cryptography.fernet import Fernet
+from fastapi import HTTPException
+from sqlalchemy import select
+from control_plane.models import (UserEnvironment, AIConfiguration, ModelCredential, AIAppCall, AIAppRun, AIRelease)
+from control_plane.settings import get_settings
+from control_plane.ai_sponsor import admission, settle
+from test_ai_trials import initialized
+from test_ai_projects import OWNER, PREFIX
+from test_project_versions import versions
+
+
+def prepared(versions, monkeypatch):
+    monkeypatch.setenv('PLATFORM_AI_RELEASES_ENABLED','true')
+    monkeypatch.setenv('PLATFORM_LITELLM_URL','http://model.test')
+    client, auth, path, config, initial = initialized(versions, monkeypatch)
+    get_settings.cache_clear()
+    owner={'native_owner_id':OWNER}
+    row=client.post(path+'/trials',headers=auth,json={**owner,'request_id':str(uuid4()),'expected_digest':initial['digest']}).json()
+    target=path+'/trials/'+row['id']
+    client.post(target+'/confirm',headers=auth,json=owner)
+    run={**owner,'conversation_id':str(uuid4()),'message_id':str(uuid4())}
+    client.post(target+'/resolve',headers=auth,json=run)
+    accepted=client.post(target+'/acceptance',headers=auth,json={**run,'outcome':'passed','note':'verified',
+        'transcript_digest':'a'*64,'answer_checked':True,'sources_checked':True})
+    assert accepted.status_code==200,accepted.text
+    publish={**owner,'request_id':str(uuid4()),'trial_id':row['id'],'expected_digest':initial['digest'],
+        'budget_micros':100000,'confirm_sponsor':True}
+    return client,auth,path,publish,config
+
+
+def launched(client,auth,path,native=OWNER):
+    response=client.post(path+'/launch',headers=auth,json={'native_owner_id':native})
+    assert response.status_code==200,response.text
+    entry=response.json()
+    target=PREFIX+'/entries/'+entry['entry_id']
+    assert client.post(target+'/confirm',headers=auth,json={'native_owner_id':native}).status_code==200
+    body={'native_owner_id':native,'conversation_id':str(uuid4()),'message_id':str(uuid4())}
+    response=client.post(target+'/resolve',headers=auth,json=body)
+    assert response.status_code==200,response.text
+    return entry,target,body,response.json()
+
+
+def test_publication_is_fixed_idempotent_and_requires_current_acceptance(versions,monkeypatch):
+    client,auth,path,body,config=prepared(versions,monkeypatch)
+    assert client.post(path+'/releases',headers=auth,json={**body,'confirm_sponsor':False}).status_code==409
+    first=client.post(path+'/releases',headers=auth,json=body)
+    assert first.status_code==200,first.text
+    assert client.post(path+'/releases',headers=auth,json=body).json()==first.json()
+    entry,target,run,runtime=launched(client,auth,path)
+    assert 'snapshot' not in entry and 'credential' not in entry
+    changed=client.post(path+'/draft',headers=auth,json={'native_owner_id':OWNER,'expected_digest':body['expected_digest'],
+        'config':{**config,'instructions':'changed draft'}})
+    assert changed.status_code==200
+    assert client.post(path+'/releases',headers=auth,json={**body,'request_id':str(uuid4())}).status_code==409
+    after=client.post(target+'/resolve',headers=auth,json=run).json()
+    assert after['snapshot']==runtime['snapshot']
+    with client.session_factory() as db:assert len(list(db.scalars(select(AIRelease))))==1
+
+
+def test_confirmation_publishes_current_completed_trial_without_manual_acceptance(versions, monkeypatch):
+    monkeypatch.setenv('PLATFORM_AI_RELEASES_ENABLED', 'true')
+    client, auth, path, config, initial = initialized(versions, monkeypatch)
+    owner = {'native_owner_id': OWNER}
+    digest = initial['digest']
+    trial = client.post(path+'/trials', headers=auth, json={
+        **owner, 'request_id': str(uuid4()), 'expected_digest': digest,
+    }).json()
+    target = path+'/trials/'+trial['id']
+    assert client.post(target+'/confirm', headers=auth, json=owner).status_code == 200
+    evidence = {'conversation_id': str(uuid4()), 'message_id': str(uuid4())}
+    body = {**owner, 'request_id': str(uuid4()), 'trial_id': trial['id'], 'expected_digest': digest,
+        'name': 'New assistant', 'description': '', 'number': 1}
+    assert client.post(path+'/releases', headers=auth, json=body).status_code == 409
+    assert client.post(path+'/releases', headers=auth, json={**body, 'trial_evidence': evidence}).status_code == 409
+    assert client.post(target+'/resolve', headers=auth, json={**owner, **evidence}).status_code == 200
+    body['trial_evidence'] = evidence
+    result = client.post(path+'/releases', headers=auth, json=body)
+    assert result.status_code == 200, result.text
+    assert result.json()['releases'][0]['trial_id'] == trial['id']
+    assert client.post(path+'/releases', headers=auth, json=body).json() == result.json()
+    assert client.get(path+'/trials', headers=auth).json()['trials'][0]['acceptance'] is None
+    changed = client.post(path+'/draft', headers=auth, json={
+        **owner, 'expected_digest': digest, 'config': {**config, 'instructions': 'changed draft'},
+    })
+    assert changed.status_code == 200
+    assert client.post(path+'/releases', headers=auth, json={
+        **body, 'request_id': str(uuid4()), 'number': 2,
+    }).status_code == 409
+
+
+def test_members_sessions_revocation_and_owner_only_management(versions,monkeypatch):
+    client,auth,path,body,_=prepared(versions,monkeypatch)
+    client.post(path+'/releases',headers=auth,json=body)
+    with client.session_factory.begin() as db:
+        owner=db.get(UserEnvironment,versions[2])
+        from control_plane.litellm import identity_hash
+        db.add(UserEnvironment(issuer=owner.issuer,subject='guest',identity_hash=identity_hash(owner.issuer,'guest'),storage_gib=1,
+            first_tenant_id=owner.first_tenant_id,status='ready'))
+    guest={**auth,'X-CodeChat-Subject':'guest'}
+    assert client.post(path+'/launch',headers=guest,json={'native_owner_id':'b'*24}).status_code==403
+    member={'native_owner_id':OWNER,'subject':'guest','native_id':'b'*24,'label':'guest@example.test','enabled':True}
+    assert client.post(path+'/members',headers=auth,json=member).status_code==200
+    assert client.post(path+'/invitation',headers=guest,json={'native_owner_id':'b'*24,
+        'expected_revision':1,'accept':True}).status_code==200
+    assert client.get(path+'/releases',headers=guest).status_code==404
+    entry,target,run,runtime=launched(client,guest,path,'b'*24)
+    assert runtime['payer']=='creator'
+    assert client.post(target+'/resolve',headers=auth,json={**run,'native_owner_id':OWNER}).status_code==403
+    assert client.post(path+'/members/revoke',headers=auth,json={'native_owner_id':OWNER,'native_id':'b'*24}).status_code==200
+    assert client.post(target+'/resolve',headers=guest,json=run).status_code==403
+    assert client.get(target+'/source?name=secret.md',headers=guest).status_code==403
+    assert client.post(target+'/search',headers=guest,json={'native_owner_id':'b'*24,'query':'x'}).status_code==403
+
+
+def test_private_publication_and_member_version_selection_are_independent(versions, monkeypatch):
+    client, auth, path, legacy, _ = prepared(versions, monkeypatch)
+    body = {key: value for key, value in legacy.items() if key not in ('budget_micros', 'confirm_sponsor')}
+    body.update(name='Help desk', description='Private until shared', number=1)
+    first = client.post(path+'/releases', headers=auth, json=body)
+    assert first.status_code == 200, first.text
+    v1 = first.json()['releases'][0]
+    assert v1['name'] == body['name'] and v1['description'] == body['description']
+    assert first.json()['application']['shared_release_id'] is None
+    assert first.json()['application']['budget_micros'] == 0
+    assert client.post(path+'/releases', headers=auth, json=body).json() == first.json()
+    duplicate = client.post(path+'/releases', headers=auth, json={**body, 'request_id': str(uuid4())})
+    assert duplicate.status_code == 409 and duplicate.json()['detail'] == 'ai_releases_version_exists'
+
+    with client.session_factory.begin() as db:
+        from control_plane.litellm import identity_hash
+        owner = db.get(UserEnvironment, versions[2])
+        db.add(UserEnvironment(issuer=owner.issuer, subject='guest', identity_hash=identity_hash(owner.issuer, 'guest'),
+            storage_gib=1, first_tenant_id=owner.first_tenant_id, status='ready'))
+    guest = {**auth, 'X-CodeChat-Subject': 'guest'}
+    member = {'native_owner_id': OWNER, 'subject': 'guest', 'native_id': 'b'*24,
+              'label': 'guest@example.test', 'enabled': True, 'budget_micros': 20000}
+    assert client.post(path+'/members', headers=auth, json=member).status_code == 409
+    selection = {'native_owner_id': OWNER, 'release_id': v1['id'], 'expected_shared_release_id': None}
+    selected = client.post(path+'/release-selection', headers=auth, json=selection).json()
+    assert selected['application']['budget_micros'] == 0
+    budget = {'native_owner_id': OWNER, 'expected_revision': selected['application']['revision'],
+              'enabled': True, 'budget_micros': 100000}
+    assert client.post(path+'/access', headers=auth, json=budget).status_code == 200
+    assert client.post(path+'/members', headers=auth, json=member).status_code == 200
+    assert client.post(path+'/invitation', headers=guest, json={'native_owner_id': 'b'*24,
+        'expected_revision': 1, 'accept': True}).status_code == 200
+    _, old_entry, old_run, _ = launched(client, guest, path, 'b'*24)
+
+    newer = client.post(path+'/releases', headers=auth, json={**body, 'name': 'Help desk v2',
+        'request_id': str(uuid4()), 'number': 2}).json()
+    v2 = newer['releases'][0]
+    assert newer['application']['active_release_id'] == v2['id']
+    assert newer['application']['shared_release_id'] == v1['id']
+    assert client.post(path+'/launch', headers=guest, json={'native_owner_id': 'b'*24}).json()['id'] == v1['id']
+    stale = client.post(path+'/release-selection', headers=auth, json={**selection, 'release_id': v2['id']})
+    assert stale.status_code == 409
+    switched = client.post(path+'/release-selection', headers=auth, json={**selection, 'release_id': v2['id'],
+        'expected_shared_release_id': v1['id']}).json()
+    assert switched['application']['budget_micros'] == 100000
+    assert switched['members'] == newer['members']
+    assert client.post(path+'/launch', headers=guest, json={'native_owner_id': 'b'*24}).json()['id'] == v2['id']
+    assert client.post(old_entry+'/resolve', headers=guest, json={**old_run, 'message_id': str(uuid4())}).status_code == 200
+    assert client.post(old_entry+'/resolve', headers=guest, json={**old_run,
+        'conversation_id': str(uuid4()), 'message_id': str(uuid4())}).status_code == 409
+    assert client.post(path+'/release-selection', headers=auth, json={**selection,
+        'expected_shared_release_id': v2['id']}).status_code == 200
+    assert client.post(path+'/launch', headers=guest, json={'native_owner_id': 'b'*24}).json()['id'] == v1['id']
+
+
+def test_personal_tool_review_consent_and_runtime_are_release_scoped(versions, harness, monkeypatch):
+    client, auth, path, previous, config = prepared(versions, monkeypatch)
+    _, token = harness
+    admin = {'Authorization': 'Bearer '+token('operator', groups=['platform-admins'])}
+    owner = {'native_owner_id': OWNER}
+    reference = 'action:quote:'+'a'*64
+    saved = client.post(path+'/draft', headers=auth, json={**owner, 'expected_digest': previous['expected_digest'],
+        'config': {**config, 'tool_reference': reference, 'calculator_enabled': True}}).json()
+    trial = client.post(path+'/trials', headers=auth, json={**owner, 'request_id': str(uuid4()),
+        'expected_digest': saved['digest']}).json()
+    target = path+'/trials/'+trial['id']
+    assert client.post(target+'/confirm', headers=auth, json=owner).status_code == 200
+    run = {**owner, 'conversation_id': str(uuid4()), 'message_id': str(uuid4())}
+    assert client.post(target+'/resolve', headers=auth, json=run).status_code == 200
+    assert client.post(target+'/acceptance', headers=auth, json={**run, 'outcome':'passed', 'note':'verified',
+        'transcript_digest':'a'*64, 'answer_checked':True, 'sources_checked':True}).status_code == 200
+    publish = {**previous, 'request_id': str(uuid4()), 'trial_id': trial['id'], 'expected_digest': saved['digest']}
+    assert client.post(path+'/releases', headers=auth, json=publish).json()['detail'] == 'ai_releases_tool_consent_required'
+    publish['confirm_tool_reference'] = reference
+    assert client.post(path+'/releases', headers=auth, json=publish).json()['detail'] == 'ai_releases_tool_review_required'
+    submitted = client.post(path+'/releases/tool-review', headers=auth, json={**owner,
+        'reference': reference, 'expected_digest': saved['digest'], 'descriptor': {
+            'name':'lookup_quote', 'title':'Quote', 'description':'Read-only quote',
+            'target':'https://quote.example.test/quote', 'parameters':['plan'],
+        }}).json()['review']
+    assert submitted['state'] == 'pending'
+    decision = '/v1/admin/assistant-tool-reviews/'+submitted['id']
+    approval = {'revision': 1, 'state':'approved', 'acknowledged':True}
+    assert client.post(decision, headers=auth, json=approval).status_code in (401, 403)
+    assert client.post(decision, headers=admin, json=approval).status_code == 200
+    published = client.post(path+'/releases', headers=auth, json=publish)
+    assert published.status_code == 200, published.text
+    assert published.json()['releases'][0]['tool_review_id'] == submitted['id']
+    _, target, run, runtime = launched(client,auth,path)
+    assert runtime['personal_tool'] == {'reference': reference, 'owner_native_id': OWNER}
+    assert {t['tool_id'] for t in runtime['snapshot']['tools']} == {reference, 'calculator'}
+    sponsor = '/agent/app/v1/chat/completions'
+    sponsor_auth = {'Authorization': 'Bearer '+runtime['credential']}
+    sponsor_payload = {'model':'test-model', 'stream':True, 'messages':[{'role':'user', 'content':'quote'}]}
+    tools = [{'type':'function', 'function':{'name':name}} for name in ('calculator', 'reviewed_tool')]
+    assert client.post(sponsor, headers=sponsor_auth, json={**sponsor_payload, 'tools':tools}).json() == {
+        'detail': 'ai_releases_price_unavailable'}
+    for unexpected in ('file_search', 'other_personal_tool'):
+        assert client.post(sponsor, headers=sponsor_auth, json={**sponsor_payload, 'tools':tools + [
+            {'type':'function', 'function':{'name':unexpected}}]}).json() == {
+                'detail': 'ai_releases_invalid_request'}
+    assert client.post(target+'/tool-admission', headers=auth,
+        json={**run, 'message_id':str(uuid4())}).status_code == 403
+    assert client.post(target+'/tool-admission', headers=auth, json=run).json() == {'allowed': True}
+    assert client.post(decision, headers=admin,
+        json={'revision':2,'state':'revoked','acknowledged':True}).status_code == 200
+    assert client.post(target+'/tool-admission', headers=auth, json=run).json()['detail'] == 'ai_releases_tool_review_required'
+
+
+def sponsored(versions,monkeypatch):
+    client,auth,path,body,_=prepared(versions,monkeypatch)
+    client.post(path+'/releases',headers=auth,json=body)
+    _,_,_,runtime=launched(client,auth,path)
+    settings=get_settings()
+    claims=jwt.decode(runtime['credential'][6:],settings.librechat_service_token,algorithms=['HS256'],audience='ai-application')
+    with client.session_factory.begin() as db:
+        env=db.get(UserEnvironment,versions[2])
+        from control_plane.ai_policy import effective_policy
+        config=effective_policy(db,settings)
+        db.add(AIConfiguration(id='default',config=config,catalog=[{'name':'test-model','input_cost_per_token':0.000001,'output_cost_per_token':0.000002}]))
+        db.add(ModelCredential(issuer=env.issuer,subject=env.subject,status='ready',
+            encrypted_key=Fernet(settings.model_credential_encryption_key.encode()).encrypt(b'sk-synthetic-owner').decode()))
+    payload={'model':'test-model','stream':True,'messages':[{'role':'user','content':'question'}]}
+    return client,claims,payload,runtime
+
+
+def test_generated_tool_requires_approved_fixed_source_and_real_trial(versions, harness, monkeypatch):
+    from control_plane.ai_tool_reviews import review_id
+    from control_plane.ai_trials import Config, config_allowed
+    from control_plane.agent_tasks import seal
+    from control_plane.generated_tools import Build, capture, validate_build
+    from control_plane.models import AIToolReview, AgentTask
+
+    monkeypatch.setenv('PLATFORM_AGENT_TASKS_ENABLED', 'true')
+    client, auth, path, previous, config = prepared(versions, monkeypatch)
+    build = Build(request_id=uuid4(), name='service_fee', title='Service fee', requirements='Add two units.',
+        parameters=['units'], cases=[{'inputs': {'units': 2}, 'result': 4}, {'inputs': {'units': 5}, 'result': 7}])
+    validate_build(build)
+    for raw in (b'{"expression":["exec", "units", 2]}', b'{"expression":["add", "units", 3]}'):
+        with pytest.raises(HTTPException):
+            capture(raw, build)
+    reference, immutable = capture(b'{"expression":["add","units",2]}', build)
+    project = path.rsplit('/', 1)[-1]
+    identifier = review_id(project, reference)
+    owner = {'native_owner_id': OWNER}
+    task_id = str(uuid4())
+    unsubmitted_id = str(uuid4())
+    with client.session_factory.begin() as db:
+        db.add(AIToolReview(id=identifier, project_id=project, reference=reference, state='pending', revision=1,
+            descriptor={'generated': immutable, 'name':build.name, 'title':build.title,
+                'description':build.requirements, 'target':'local rules', 'parameters':build.parameters}))
+        db.add(AgentTask(id=task_id, environment_id=versions[2], conversation_id='tool_'+build.request_id.hex,
+            request_key='test-bound-rules', config={'project_path':'test/rules'}, status='completed',
+            encrypted_prompt='unused', encrypted_events='unused',
+            resources={'tool_project':project, 'tool_reference':reference}))
+        db.add(AgentTask(id=unsubmitted_id, environment_id=versions[2], conversation_id='tool_'+uuid4().hex,
+            request_key='test-unsubmitted-rule', config={'project_path':'test/rules'}, status='completed',
+            encrypted_prompt='unused', encrypted_events=seal(
+                [{'kind':'file','operation':'write','path':'tool.json','source_digest':'a'*64}], get_settings()),
+            resources={'tool_project':project,'tool_build':seal({'title':'Unsubmitted rule'}, get_settings())}))
+        env = db.get(UserEnvironment, versions[2])
+        from control_plane.user_environments import identity_digest
+        db.add(UserEnvironment(issuer=env.issuer, subject='unrelated-tool-account',
+            identity_hash=identity_digest(env.issuer, 'unrelated-tool-account'), storage_gib=1,
+            first_tenant_id=env.first_tenant_id, status='ready'))
+    catalog_path = PREFIX+'/generated-tools'
+    listed = client.get(catalog_path, headers=auth).json()['tools']
+    assert [(item['id'], item['reference'], item['state']) for item in listed] == [
+        (identifier, reference, 'pending'), (unsubmitted_id, None, 'unsubmitted')]
+    assert all(item['project_id'] == project and item['project_name'] and 'program' not in item for item in listed)
+    assert client.get(catalog_path, headers={**auth,'X-CodeChat-Subject':'unrelated-tool-account'}).json() == {'tools':[]}
+    body = {**owner, 'expected_digest':previous['expected_digest'], 'config':{**config,'tool_reference':reference}}
+    assert client.post(path+'/draft', headers=auth, json=body).status_code == 409
+    _, token = harness
+    admin = {'Authorization': 'Bearer '+token('operator', groups=['platform-admins'])}
+    review = '/v1/admin/assistant-tool-reviews/'+identifier
+    assert client.post(review, headers=admin, json={'revision':1,'state':'approved','acknowledged':True}).status_code == 200
+    with client.session_factory() as db, pytest.raises(HTTPException) as denied:
+        config_allowed(db, Config.model_validate(body['config']), get_settings(), str(uuid4()))
+    assert denied.value.status_code == 409
+    draft = client.post(path+'/draft', headers=auth, json=body).json()
+    row = client.post(path+'/trials', headers=auth, json={**owner, 'request_id':str(uuid4()),
+        'expected_digest':draft['digest']}).json()
+    trial = path+'/trials/'+row['id']
+    assert client.post(trial+'/confirm', headers=auth, json=owner).status_code == 200
+    run = {**owner, 'conversation_id':str(uuid4()),'message_id':str(uuid4())}
+    assert client.post(trial+'/resolve', headers=auth, json=run).json()['reviewed_tool']['reference'] == reference
+    acceptance = {**run, 'outcome':'passed','note':'verified','transcript_digest':'a'*64,
+                  'answer_checked':True,'sources_checked':True}
+    assert client.post(trial+'/acceptance', headers=auth, json=acceptance).status_code == 409
+    invoke = PREFIX+'/trials/'+row['id']+'/tool'
+    assert client.post(invoke, headers=auth, json={**run, 'arguments':{'units':4, 'network':'x'}}).status_code == 422
+    assert client.post(invoke, headers=auth, json={**run, 'arguments':{'units':4}}).json() == {'text':'{"result": 6}'}
+    assert client.post(trial+'/acceptance', headers=auth, json=acceptance).status_code == 200
+    publish = {**previous, 'request_id':str(uuid4()), 'trial_id':row['id'], 'expected_digest':draft['digest']}
+    assert client.post(path+'/releases', headers=auth, json=publish).status_code == 409
+    assert client.post(path+'/releases', headers=auth, json={**publish,'confirm_tool_reference':reference}).status_code == 200
+    _, target, run, runtime = launched(client, auth, path)
+    assert runtime['generated_tool']['reference'] == reference and runtime['personal_tool'] is None
+    assert client.post(target+'/tool-admission', headers=auth, json={**run,'arguments':{'units':8}}).json() == {
+        'allowed':True,'text':'{"result": 10}'}
+    review_route = path+'/generated-tools/'+task_id
+    bounds = {'units':{'minimum':1,'maximum':100}}
+    change = {**owner,'bounds':bounds,'expected_reference':reference}
+    assert client.post(review_route, headers=auth, json={**change,'bounds':{'other':bounds['units']}}).status_code == 422
+    assert client.post(review_route, headers=auth, json={**change,'bounds':{'units':{'minimum':10,'maximum':1}}}).status_code == 422
+    assert client.post(review_route, headers=auth, json={**change,'bounds':{'units':{'minimum':6,'maximum':9}}}).json() == {
+        'detail':'ai_generated_tool_bounds_no_cases'}
+    requested = client.post(review_route, headers=auth, json=change).json()
+    fixed = requested['review']['reference']
+    assert fixed != reference and requested['bounds'] == bounds and requested['review']['state'] == 'pending'
+    assert client.post(review_route, headers=auth, json=change).json() == requested
+    assert client.post(review_route, headers=auth, json={**change,'bounds':{'units':{'minimum':1,'maximum':90}}}).status_code == 409
+    with client.session_factory() as db:
+        assert 'bounds' not in db.get(AIToolReview, identifier).descriptor['generated']['program']
+    assert client.post(path+'/draft', headers=auth, json={**body,'expected_digest':draft['digest'],
+        'config':{**config,'tool_reference':fixed}}).status_code == 409
+    fixed_review = review_id(project, fixed)
+    assert client.post('/v1/admin/assistant-tool-reviews/'+fixed_review, headers=admin,
+        json={'revision':1,'state':'approved','acknowledged':True}).status_code == 200
+    bounded = client.post(path+'/draft', headers=auth, json={**body,'expected_digest':draft['digest'],
+        'config':{**config,'tool_reference':fixed}}).json()
+    bounded_trial = client.post(path+'/trials', headers=auth, json={**owner, 'request_id':str(uuid4()),
+        'expected_digest':bounded['digest']}).json()
+    trial = path+'/trials/'+bounded_trial['id']
+    assert client.post(trial+'/confirm', headers=auth, json=owner).status_code == 200
+    checked = {**owner, 'conversation_id':str(uuid4()),'message_id':str(uuid4())}
+    assert client.post(trial+'/resolve', headers=auth, json=checked).status_code == 200
+    new_acceptance = {**acceptance, **checked}
+    assert '未计算结果' in client.post(PREFIX+'/trials/'+bounded_trial['id']+'/tool', headers=auth,
+        json={**checked,'arguments':{'units':0}}).json()['text']
+    assert client.post(trial+'/acceptance', headers=auth, json=new_acceptance).status_code == 409
+    assert client.post(PREFIX+'/trials/'+bounded_trial['id']+'/tool', headers=auth,
+        json={**checked,'arguments':{'units':1}}).json() == {'text':'{"result": 3}'}
+    assert client.post(trial+'/acceptance', headers=auth, json=new_acceptance).status_code == 200
+    assert client.post(path+'/releases', headers=auth, json={**publish,'request_id':str(uuid4()),
+        'trial_id':bounded_trial['id'],'expected_digest':bounded['digest'],'confirm_tool_reference':fixed}).status_code == 200
+    _, fixed_target, fixed_run, runtime = launched(client, auth, path)
+    assert runtime['generated_tool']['input_schema']['properties']['units'] == {'type':'integer', **bounds['units']}
+    assert client.post(fixed_target+'/tool-admission', headers=auth, json={**fixed_run,'arguments':{'units':100}}).json()['text'] == '{"result": 102}'
+    denied = client.post(fixed_target+'/tool-admission', headers=auth, json={**fixed_run,'arguments':{'units':101}}).json()['text']
+    assert '1 到 100' in denied and '未计算结果' in denied
+    assert client.post(fixed_target+'/tool-admission', headers=auth, json={**fixed_run,'arguments':{'units':1}}).json()['text'] == denied
+    sponsor = client.post('/agent/app/v1/chat/completions', headers={'Authorization':'Bearer '+runtime['credential']},
+        json={'model':'test-model','stream':True,'messages':[{'role':'user','content':'quote'}]})
+    assert sponsor.status_code == 200 and denied in sponsor.text and '[DONE]' in sponsor.text
+    assert client.post(review, headers=admin, json={'revision':2,'state':'revoked','acknowledged':True}).status_code == 200
+    listed = {item['reference']:item['state'] for item in client.get(catalog_path, headers=auth).json()['tools']}
+    assert listed[reference] == 'revoked' and listed[fixed] == 'approved'
+    assert client.post(target+'/tool-admission', headers=auth, json={**run,'arguments':{'units':8}}).status_code == 409
+
+
+def test_budget_ledger_duplicate_unknown_and_settlement(versions,monkeypatch):
+    client,claims,payload,_=sponsored(versions,monkeypatch)
+    with client.session_factory() as db:
+        identifier,engine,key,out=admission(db,claims,payload,get_settings())
+        assert key=='sk-synthetic-owner'
+        assert out['metadata']['purpose']=='published_application'
+        with pytest.raises(HTTPException) as duplicate:admission(db,claims,payload,get_settings())
+        assert duplicate.value.status_code==409
+    settle(engine,identifier,{'prompt_tokens':10,'completion_tokens':20},completed=True)
+    with client.session_factory() as db:
+        row=db.get(AIAppCall,identifier)
+        assert row.state=='completed' and row.held_micros==50 and row.reserved_micros>50
+        second,engine,_,_=admission(db,claims,{**payload,'messages':[{'role':'user','content':'second'}]},get_settings())
+    settle(engine,second,None)
+    with client.session_factory() as db:
+        row=db.get(AIAppCall,second)
+        assert row.state=='uncertain' and row.held_micros==row.reserved_micros
+    settle(engine,second,{'prompt_tokens':0,'completion_tokens':0},completed=True)
+    with client.session_factory() as db:assert db.get(AIAppCall,second).state=='uncertain'
+
+
+def test_sponsor_http_stream_uses_creator_key_strips_reasoning_and_stops_replay(versions,monkeypatch):
+    client,claims,payload,runtime=sponsored(versions,monkeypatch)
+    seen=[]
+    def response(request):
+        seen.append(request)
+        assert request.headers['authorization']=='Bearer sk-synthetic-owner'
+        outgoing=json.loads(request.content)
+        assert outgoing['metadata']['app_call_id']
+        assert outgoing['metadata']['spend_logs_metadata']['app_call_id'] == outgoing['metadata']['app_call_id']
+        return httpx.Response(200,text='data: '+json.dumps({'choices':[{'delta':{'content':'回答','reasoning_content':'private'}}]})+
+            '\n\ndata: '+json.dumps({'choices':[],'usage':{'prompt_tokens':10,'completion_tokens':20}})+'\n\ndata: [DONE]\n\n')
+    original=httpx.AsyncClient
+    monkeypatch.setattr('control_plane.ai_sponsor.httpx.AsyncClient',lambda **kwargs:original(transport=httpx.MockTransport(response),**kwargs))
+    auth={'Authorization':'Bearer '+runtime['credential']}
+    first=client.post('/agent/app/v1/chat/completions',headers=auth,json=payload)
+    assert first.status_code==200 and '回答' in first.text and 'private' not in first.text
+    assert client.post('/agent/app/v1/chat/completions',headers=auth,json=payload).status_code==409
+    assert len(seen)==1
+
+
+@pytest.mark.parametrize('status,state,held', [(429,'rejected',False),(422,'rejected',False),(503,'uncertain',True),(200,'uncertain',True)])
+def test_upstream_failure_retains_unknown_cost_without_replay(versions,monkeypatch,status,state,held):
+    client,_,payload,runtime=sponsored(versions,monkeypatch)
+    seen=[]
+    def response(request):
+        seen.append(request)
+        # Even a 200 response without a final receipt cannot prove completion.
+        return httpx.Response(status,text='data: '+json.dumps({'choices':[{'delta':{'content':'partial'}}]})+'\n\n')
+    original=httpx.AsyncClient
+    monkeypatch.setattr('control_plane.ai_sponsor.httpx.AsyncClient',lambda **kwargs:original(transport=httpx.MockTransport(response),**kwargs))
+    auth={'Authorization':'Bearer '+runtime['credential']}
+    client.post('/agent/app/v1/chat/completions',headers=auth,json=payload)
+    assert client.post('/agent/app/v1/chat/completions',headers=auth,json=payload).status_code==409
+    assert len(seen)==1
+    with client.session_factory() as db:
+        row=db.scalar(select(AIAppCall))
+        assert row.state==state and bool(row.held_micros)==held
+
+
+def test_application_budget_is_terminal_before_any_provider_request(versions,monkeypatch):
+    client,_,payload,runtime=sponsored(versions,monkeypatch)
+    from control_plane.models import AIApplication
+    with client.session_factory.begin() as db:
+        db.scalar(select(AIApplication)).budget_micros=1000
+    def forbidden(**kwargs):
+        pytest.fail('Insufficient application budget must never contact the provider')
+    monkeypatch.setattr('control_plane.ai_sponsor.httpx.AsyncClient',forbidden)
+    response=client.post('/agent/app/v1/chat/completions',headers={'Authorization':'Bearer '+runtime['credential']},json=payload)
+    assert response.status_code==402
+    assert response.headers['x-should-retry']=='false'
+    assert response.json()['error']['code']=='ai_releases_budget_exhausted'
+    with client.session_factory() as db:assert list(db.scalars(select(AIAppCall)))==[]

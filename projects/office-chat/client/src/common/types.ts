@@ -1,0 +1,432 @@
+import { RefObject } from 'react';
+import { isEphemeralAgentId } from 'librechat-data-provider';
+import type {
+  TOptions,
+  TAskProps,
+  TAskFunction,
+  PaneOptionSettings,
+  MessageAudioProps,
+  NewConversationParams,
+} from '@librechat/chat/react';
+import type { UseMutationResult } from '@tanstack/react-query';
+import type { MessageIconData } from '@librechat/chat/react';
+import type { ExtendedFile } from '@librechat/chat';
+import type * as t from 'librechat-data-provider';
+import type { LucideIcon } from 'lucide-react';
+import type { SetterOrUpdater } from 'recoil';
+import type { TranslationKeys } from '~/hooks';
+import { MCPServerDefinition } from '~/hooks/MCP/useMCPServerManager';
+
+export function isEphemeralAgent(agentId: string | null | undefined): boolean {
+  return isEphemeralAgentId(agentId);
+}
+
+export interface ConfigFieldDetail {
+  title: string;
+  description: string;
+  /** Whether the field holds a secret and should be masked (defaults to masked when omitted). */
+  sensitive?: boolean;
+}
+
+export type CodeBarProps = {
+  lang: string;
+  error?: boolean;
+  plugin?: boolean;
+  blockIndex?: number;
+  allowExecution?: boolean;
+  codeRef: RefObject<HTMLElement>;
+};
+
+export enum PromptsEditorMode {
+  SIMPLE = 'simple',
+  ADVANCED = 'advanced',
+}
+
+export enum STTEndpoints {
+  browser = 'browser',
+  external = 'external',
+}
+
+export enum TTSEndpoints {
+  browser = 'browser',
+  external = 'external',
+}
+
+export type AssistantListItem = {
+  id: string;
+  name: string;
+  metadata: t.Assistant['metadata'];
+  model: string;
+};
+
+export type GenericSetter<T> = (value: T | ((currentValue: T) => T)) => void;
+
+export type LastSelectedModels = Record<t.EModelEndpoint, string>;
+
+export type LocalizeFunction = (
+  phraseKey: TranslationKeys,
+  options?: Record<string, string | number>,
+) => string;
+
+export type ChatFormValues = { text: string };
+
+export { mainTextareaId } from '@librechat/chat';
+export const globalAudioId = 'global-audio';
+
+export type NavLink = {
+  title: TranslationKeys;
+  label?: string;
+  icon: LucideIcon | React.FC;
+  Component?: React.ComponentType;
+  onClick?: (e?: React.MouseEvent) => void;
+  variant?: 'default' | 'ghost';
+  disabled?: boolean;
+  id: string;
+};
+
+export enum Panel {
+  advanced = 'advanced',
+  builder = 'builder',
+  actions = 'actions',
+  model = 'model',
+  version = 'version',
+}
+
+export type FileSetter =
+  | SetterOrUpdater<Map<string, ExtendedFile>>
+  | React.Dispatch<React.SetStateAction<Map<string, ExtendedFile>>>;
+
+export type ActionAuthForm = {
+  /* General */
+  type: t.AuthTypeEnum;
+  saved_auth_fields: boolean;
+  /* API key */
+  api_key: string; // not nested
+  authorization_type: t.AuthorizationTypeEnum;
+  custom_auth_header: string;
+  /* OAuth */
+  oauth_client_id: string; // not nested
+  oauth_client_secret: string; // not nested
+  authorization_url: string;
+  client_url: string;
+  scope: string;
+  token_exchange_method: t.TokenExchangeMethodEnum;
+};
+
+export type ActionWithNullableMetadata = Omit<t.Action, 'metadata'> & {
+  metadata: t.ActionMetadata | null;
+};
+
+export type AssistantPanelProps = {
+  index?: number;
+  action?: ActionWithNullableMetadata;
+  actions?: t.Action[];
+  assistant_id?: string;
+  activePanel?: string;
+  endpoint: t.AssistantsEndpoint;
+  version: number | string;
+  documentsMap: Map<string, t.AssistantDocument> | null;
+  setAction: React.Dispatch<React.SetStateAction<t.Action | undefined>>;
+  setCurrentAssistantId: React.Dispatch<React.SetStateAction<string | undefined>>;
+  setActivePanel: React.Dispatch<React.SetStateAction<Panel>>;
+};
+
+export type AgentPanelProps = {
+  index?: number;
+  agent_id?: string;
+  activePanel?: string;
+  mcp?: t.MCP;
+  mcps?: t.MCP[];
+  action?: t.Action;
+  actions?: t.Action[];
+  createMutation: UseMutationResult<t.Agent, Error, t.AgentCreateParams>;
+  setActivePanel: React.Dispatch<React.SetStateAction<Panel>>;
+  setMcp: React.Dispatch<React.SetStateAction<t.MCP | undefined>>;
+  setAction: React.Dispatch<React.SetStateAction<t.Action | undefined>>;
+  endpointsConfig?: t.TEndpointsConfig;
+  setCurrentAgentId: React.Dispatch<React.SetStateAction<string | undefined>>;
+  agentsConfig?: t.TAgentsEndpoint | null;
+};
+
+export interface MCPServerInfo {
+  serverName: string;
+  tools: t.AgentToolType[];
+  isConfigured: boolean;
+  isConnected: boolean;
+  /** True when the server can be attached to an agent, even if its transport is request-scoped. */
+  isReadyForAgent?: boolean;
+  /** True when tools can only be discovered with live chat request fields. */
+  requestScoped?: boolean;
+  consumeOnly?: boolean;
+  metadata: t.TPlugin;
+}
+
+export type AgentPanelContextType = {
+  action?: t.Action;
+  actions?: t.Action[];
+  setAction: React.Dispatch<React.SetStateAction<t.Action | undefined>>;
+  mcp?: t.MCP;
+  mcps?: t.MCP[];
+  setMcp: React.Dispatch<React.SetStateAction<t.MCP | undefined>>;
+  setMcps: React.Dispatch<React.SetStateAction<t.MCP[] | undefined>>;
+  activePanel?: string;
+  regularTools?: t.TPlugin[];
+  setActivePanel: React.Dispatch<React.SetStateAction<Panel>>;
+  setCurrentAgentId: React.Dispatch<React.SetStateAction<string | undefined>>;
+  agent_id?: string;
+  /** Runs `start` once the chat it opens is in view: the host closes the mobile drawer first. */
+  revealChat: (start: () => void) => void;
+  startupConfig?: t.TStartupConfig | null;
+  agentsConfig?: t.TAgentsEndpoint | null;
+  endpointsConfig?: t.TEndpointsConfig | null;
+  /** Pre-computed MCP server information indexed by server key */
+  mcpServersMap: Map<string, MCPServerInfo>;
+  /** True while the MCP tools list is being fetched and no data has arrived yet,
+   * so consumers can show a skeleton instead of an empty "no tools" state. */
+  mcpToolsLoading: boolean;
+  availableMCPServers: MCPServerDefinition[];
+  availableMCPServersMap: t.MCPServersListResponse | undefined;
+};
+
+export type AgentModelPanelProps = {
+  agent_id?: string;
+  providers: Option[];
+  models: Record<string, string[] | undefined>;
+  modelsError: boolean;
+  modelsReady: boolean;
+  setActivePanel: React.Dispatch<React.SetStateAction<Panel>>;
+};
+
+export type TSetOption = t.TSetOption;
+
+export type TSetExample = (
+  i: number,
+  type: string,
+  newValue: number | string | boolean | null,
+) => void;
+
+export const defaultDebouncedDelay = 450;
+
+export enum ESide {
+  Top = 'top',
+  Right = 'right',
+  Bottom = 'bottom',
+  Left = 'left',
+}
+
+export enum NotificationSeverity {
+  INFO = 'info',
+  SUCCESS = 'success',
+  WARNING = 'warning',
+  ERROR = 'error',
+}
+
+export type TShowToast = {
+  message: string;
+  severity?: NotificationSeverity;
+  showIcon?: boolean;
+  duration?: number;
+  status?: 'error' | 'success' | 'warning' | 'info';
+};
+
+export type TBaseSettingsProps = {
+  conversation: t.TConversation | t.TPreset | null;
+  className?: string;
+  isPreset?: boolean;
+  readonly?: boolean;
+};
+
+export type TSettingsProps = TBaseSettingsProps & {
+  setOption: TSetOption;
+};
+
+export type TModels = {
+  models: string[];
+  showAbove?: boolean;
+  popover?: boolean;
+};
+
+export type TModelSelectProps = TSettingsProps & TModels;
+
+export type TEditPresetProps = {
+  open: boolean;
+  onOpenChange: React.Dispatch<React.SetStateAction<boolean>>;
+  preset: t.TPreset;
+  title?: string;
+};
+
+export type TSetOptions = (options: Record<string, unknown>) => void;
+export type TSetOptionsPayload = {
+  setOption: TSetOption;
+  setExample: TSetExample;
+  addExample: () => void;
+  removeExample: () => void;
+  setOptions?: TSetOptions;
+};
+
+export type TOnClick = (e: React.MouseEvent<HTMLButtonElement>) => void;
+
+export type TGenButtonProps = {
+  onClick: TOnClick;
+};
+
+export type { TMessageChatContext } from '@librechat/chat/react';
+export type { TMessageProps } from '@librechat/chat/react';
+
+export type TMessageIcon = MessageIconData;
+
+export type TInitialProps = {
+  text: string;
+  edit: boolean;
+  error: boolean;
+  unfinished: boolean;
+  isSubmitting: boolean;
+  isLast: boolean;
+};
+export type TAdditionalProps = {
+  ask: TAskFunction;
+  message: t.TMessage;
+  isCreatedByUser: boolean;
+  siblingIdx: number;
+  enterEdit: (cancel: boolean) => void;
+  setSiblingIdx: (value: number) => void;
+};
+
+export type TMessageContentProps = TInitialProps & TAdditionalProps;
+
+export type TText = Pick<TInitialProps, 'text'> & { className?: string };
+export type TEditProps = Pick<TInitialProps, 'isSubmitting'> &
+  Omit<TAdditionalProps, 'isCreatedByUser' | 'siblingIdx'> & {
+    text?: string;
+    index?: number;
+    siblingIdx: number | null;
+  };
+export type TDisplayProps = TText &
+  Pick<TAdditionalProps, 'isCreatedByUser' | 'message'> & {
+    showCursor?: boolean;
+  };
+
+export type TConfigProps = {
+  userKey: string;
+  setUserKey: React.Dispatch<React.SetStateAction<string>>;
+  endpoint: t.EModelEndpoint | string;
+};
+
+export type TDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+
+export type ToolDialogProps = {
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
+};
+
+export type TResError = {
+  response: { data: { message: string; code?: string } };
+  message: string;
+};
+
+export type TAuthContext = {
+  user: t.TUser | undefined;
+  token: string | undefined;
+  isAuthenticated: boolean;
+  isAuthReady: boolean;
+  error: string | undefined;
+  login: (data: t.TLoginUser) => void;
+  logout: (redirect?: string) => void;
+  completeAuthentication: (token: string, user: t.TUser) => void;
+  setError: React.Dispatch<React.SetStateAction<string | undefined>>;
+  roles?: Record<string, t.TRole | null | undefined>;
+};
+
+export type TUserContext = {
+  user?: t.TUser | undefined;
+  token: string | undefined;
+  isAuthenticated: boolean;
+  redirect?: string;
+};
+
+export type TAuthConfig = {
+  loginRedirect: string;
+  test?: boolean;
+  optional?: boolean;
+};
+
+export type IconProps = Pick<t.TMessage, 'isCreatedByUser' | 'model'> &
+  Pick<t.TConversation, 'chatGptLabel' | 'modelLabel'> & {
+    size?: number;
+    button?: boolean;
+    iconURL?: string;
+    message?: boolean;
+    className?: string;
+    iconClassName?: string;
+    endpoint?: t.EModelEndpoint | string | null;
+    endpointType?: t.EModelEndpoint | null;
+    endpointsConfig?: t.TEndpointsConfig | null;
+    assistantName?: string;
+    agentName?: string;
+    error?: boolean;
+  };
+
+export type Option = Record<string, unknown> & {
+  label?: string;
+  value: string | number | null;
+};
+
+export type StringOption = Option & { value: string | null };
+
+export type VoiceOption = {
+  value: string;
+  label: string;
+};
+
+export type TMessageAudio = MessageAudioProps;
+
+export type OptionWithIcon = Option & { icon?: React.ReactNode };
+export type DropdownValueSetter = (value: string | Option | OptionWithIcon) => void;
+export type MentionOption = OptionWithIcon & {
+  type: string;
+  value: string;
+  description?: string;
+};
+export type PromptOption = MentionOption & {
+  id: string;
+};
+
+export type TOptionSettings = PaneOptionSettings;
+
+export type { ExtendedFile, TOptions, TAskProps, TAskFunction, NewConversationParams };
+
+export type TLoginLayoutContext = {
+  startupConfig: t.TStartupConfig | null;
+  startupConfigError: unknown;
+  isFetching: boolean;
+  error: string | null;
+  setError: React.Dispatch<React.SetStateAction<string | null>>;
+  headerText: string;
+  setHeaderText: React.Dispatch<React.SetStateAction<string>>;
+};
+
+export type ConvoGenerator = (params: NewConversationParams) => void | t.TConversation;
+
+export type { TResData, TBaseResData, TFinalResData } from '@librechat/chat';
+
+declare global {
+  interface Window {
+    google_tag_manager?: unknown;
+    /** Google Tag Manager's command queue, present once the container has loaded. */
+    dataLayer?: unknown[];
+    /** Answers the server emits with the document, ahead of the app's own
+     *  scripts, for questions the first render must not guess at. */
+    __LIBRECHAT_CONFIG__?: {
+      enableQueryDevtools?: boolean;
+      /** Whether this deployment configured footer content of its own, so the
+       *  composer reserves the footer bar's band on its first frame. */
+      hasConfiguredFooter?: boolean;
+      /** The deployment's `interface.landingFooter`, so the welcome screen does
+       *  not paint a footer the config is about to remove or move. */
+      landingFooter?: boolean | 'composer';
+    };
+  }
+}

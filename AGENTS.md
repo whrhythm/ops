@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This repo is an ArgoCD GitOps repository (repo: https://github.com/whrhythm/ops.git, branch `main`). It holds no application code — only Kubernetes manifests and ArgoCD `Application` objects. There is no build/test/lint system.
+This repo is an ArgoCD GitOps repository (repo: https://github.com/whrhythm/ops.git, branch `main`). Production Argo CD reads `apps/` and `argocd/`. Product source lives in `projects/`. The offline installer, release inventory and user guide live in `distribution/`. Use the build and test commands of the component you change.
 
 ## Layout
 

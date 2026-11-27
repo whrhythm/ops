@@ -1,0 +1,575 @@
+"""Fixed AI releases, explicit members and server-only runtime admissions."""
+from datetime import datetime, timezone
+import re
+from uuid import UUID, NAMESPACE_URL, uuid5
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from sqlalchemy import func, select
+from .accounts import allowed
+from .agent_tasks import seal, unseal
+from .ai_trials import Owner, Resolve, draft_snapshot, usable
+from .ai_trial_tools import PERSONAL_REFERENCE, RELEASABLE_REFERENCE, generated_tool
+from .generated_tools import InputRejected, bounds_message, describe as describe_generated, execute
+from .ai_tool_reviews import ReviewDescriptor, require_review, review_id, review_out
+from .auth import Principal
+from .database import get_db
+from .models import (AIApplication, AIRelease, AIAppMember, AIAppEntry, AIAppRun, AIAppCall,
+    AIProjectBinding, AIProjectTrial, AITrialRun, AITrialSession, AIToolReview, UserEnvironment,
+    AuditEvent, WorkspaceProject, now)
+from .settings import get_settings
+from .workspace_gateway import own_environment
+from .ai_sharing import member_state, member_out, utc, add_routes
+
+
+class TrialEvidence(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    conversation_id: UUID
+    message_id: str = Field(min_length=1, max_length=100)
+
+
+class Publish(Owner):
+    request_id: UUID
+    trial_id: UUID
+    expected_digest: str = Field(pattern=r'^[0-9a-f]{64}$')
+    budget_micros: int | None = Field(default=None, ge=1000, le=100000000)
+    confirm_sponsor: bool | None = None
+    confirm_tool_reference: str | None = Field(default=None, pattern=RELEASABLE_REFERENCE)
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    description: str | None = Field(default=None, max_length=512)
+    number: int | None = Field(default=None, strict=True, ge=1, le=999999)
+    trial_evidence: TrialEvidence | None = None
+
+    @field_validator('name', 'description', mode='before')
+    @classmethod
+    def trim_metadata(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode='after')
+    def validate_format(self):
+        if self.number is not None:
+            if self.name is None or self.budget_micros is not None or self.confirm_sponsor is not None or self.confirm_tool_reference is not None:
+                raise ValueError('Invalid version publication')
+        elif (self.name is not None or self.description is not None or self.budget_micros is None
+              or self.confirm_sponsor is None or self.trial_evidence is not None):
+            raise ValueError('Missing version publication fields')
+        return self
+
+
+class ReleaseSelection(Owner):
+    release_id: UUID
+    expected_shared_release_id: UUID | None
+    confirm_tools: bool = False
+
+
+class SubmitToolReview(Owner):
+    reference: str = Field(pattern=PERSONAL_REFERENCE)
+    expected_digest: str = Field(pattern=r'^[0-9a-f]{64}$')
+    descriptor: ReviewDescriptor
+
+
+class AccessUpdate(Owner):
+    expected_revision: int = Field(ge=1)
+    enabled: bool
+    budget_micros: int = Field(ge=1000, le=100000000)
+
+
+class Member(Owner):
+    # Resolved from the registered, verified OpenID account by the trusted BFF.
+    subject: str = Field(min_length=1, max_length=255)
+    native_id: str = Field(pattern=r'^[0-9a-f]{24}$')
+    label: str = Field(min_length=1, max_length=255)
+    enabled: bool
+    expected_revision: int | None = Field(default=None, ge=1)
+    budget_micros: int | None = Field(default=None, ge=0, le=100000000)
+    expires_at: datetime | None = None
+
+
+class Search(Owner):
+    model_config = ConfigDict(extra='forbid')
+    query: str = Field(min_length=1, max_length=2000)
+
+
+class ReleaseToolCall(Resolve):
+    arguments: dict | None = None
+
+
+class Revoke(Owner):
+    native_id: str = Field(pattern=r'^[0-9a-f]{24}$')
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+def enabled():
+    settings = get_settings()
+    if not settings.ai_releases_enabled:
+        raise HTTPException(404, 'ai_releases_disabled')
+    return settings
+
+
+def environment(db, principal):
+    env = own_environment(db, principal)
+    if env.status in ('deleted', 'suspended') or not allowed(db, env.issuer, env.subject):
+        raise HTTPException(403, 'ai_releases_access_denied')
+    return env
+
+
+def owner(db, principal, project_id, native_id=None):
+    env = environment(db, principal)
+    db.refresh(env, with_for_update=True)
+    binding = db.get(AIProjectBinding, str(project_id))
+    if (not binding or binding.environment_id != env.id or binding.state != 'ready' or
+            (native_id and binding.native_owner_id != native_id)):
+        raise HTTPException(404, 'ai_releases_not_found')
+    return env, binding
+
+
+def check_access(db, principal, project_id, native_id=None):
+    settings = enabled()
+    actor = environment(db, principal)
+    app = db.get(AIApplication, str(project_id))
+    binding = db.get(AIProjectBinding, str(project_id))
+    sponsor = db.get(UserEnvironment, binding.environment_id) if binding else None
+    if not app or not sponsor or not app.enabled or not app.active_release_id:
+        raise HTTPException(403, 'ai_releases_access_denied')
+    if sponsor.status in ('deleted', 'suspended') or not allowed(db, sponsor.issuer, sponsor.subject):
+        raise HTTPException(403, 'ai_releases_access_denied')
+    if actor.id == sponsor.id:
+        expected = binding.native_owner_id
+    else:
+        member = db.get(AIAppMember, (app.project_id, actor.id))
+        if not app.shared_release_id or not member or member_state(member) != 'active':
+            raise HTTPException(403, 'ai_releases_access_denied')
+        expected = member.native_id
+    if native_id and native_id != expected:
+        raise HTTPException(403, 'ai_releases_access_denied')
+    return actor, sponsor, app, settings
+
+
+def entry_access(db, principal, entry_id, native_id=None):
+    entry = db.get(AIAppEntry, str(entry_id))
+    release = db.get(AIRelease, entry.release_id) if entry else None
+    if not release:
+        raise HTTPException(404, 'ai_releases_not_found')
+    actor, sponsor, app, settings = check_access(db, principal, release.project_id, native_id)
+    if entry.environment_id != actor.id or (native_id and entry.native_id != native_id):
+        raise HTTPException(403, 'ai_releases_access_denied')
+    trial = db.get(AIProjectTrial, release.trial_id)
+    snap = usable(db, trial, settings)
+    release_tool_grant(db, release, snap)
+    return entry, release, trial, snap, actor, sponsor, app, settings
+
+
+def release_tool_reference(snapshot):
+    external = [tool.tool_id for tool in snapshot.tools if tool.tool_id not in ('file_search', 'calculator')]
+    if not external:
+        return None
+    if len(external) != 1 or not re.fullmatch(RELEASABLE_REFERENCE, external[0]):
+        raise HTTPException(409, 'ai_releases_tool_trial_only')
+    return external[0]
+
+
+def release_tool_grant(db, release, snapshot, lock=False):
+    reference = release_tool_reference(snapshot)
+    if reference:
+        return require_review(db, release.project_id, reference, release.tool_review_id, lock)
+    return None
+
+
+def audit(db, env, principal, action, identifier):
+    db.add(AuditEvent(tenant_id=env.first_tenant_id, issuer=principal.issuer, subject=principal.subject,
+        action='ai_release.'+action, target_id=identifier))
+
+
+def release_out(db, release):
+    trial = db.get(AIProjectTrial, release.trial_id)
+    return {'id': release.id, 'project_id': release.project_id, 'number': release.number,
+        'name': release.name, 'description': release.description,
+        'requires_tool_consent': bool(release.tool_review_id),
+        'trial_id': trial.id, 'digest': trial.digest, 'knowledge_revision_id': trial.knowledge_revision_id,
+        'tool_review_id': release.tool_review_id,
+        'created_at': release.created_at.replace(tzinfo=release.created_at.tzinfo or timezone.utc)}
+
+
+def entry_out(db, entry, release):
+    project = db.get(WorkspaceProject, release.project_id)
+    from .ai_application_contracts import AgentSnapshot
+    snap = AgentSnapshot.model_validate(unseal(db.get(AIProjectTrial, release.trial_id).encrypted_snapshot, get_settings()))
+    return {**release_out(db, release), 'entry_id': entry.id, 'agent_id': 'agent_app_'+UUID(entry.id).hex,
+        'name': release.name or project.name, 'model': snap.model.model, 'ready': entry.ready, 'payer': 'creator'}
+
+
+def detail(db, project_id, settings):
+    app = db.get(AIApplication, str(project_id))
+    if not app:
+        return {'application': None, 'releases': [], 'members': []}
+    calls = db.execute(select(AIAppCall.state, func.count(), func.sum(AIAppCall.held_micros))
+        .where(AIAppCall.project_id == app.project_id).group_by(AIAppCall.state)).all()
+    return {'application': {'project_id': app.project_id, 'enabled': app.enabled,
+        'active_release_id': app.active_release_id, 'shared_release_id': app.shared_release_id,
+        'revision': app.revision, 'budget_micros': app.budget_micros,
+        'held_micros': sum(v[2] or 0 for v in calls), 'calls': [{'state': v[0], 'count': v[1]} for v in calls]},
+        'releases': [release_out(db, r) for r in db.scalars(select(AIRelease).where(
+            AIRelease.project_id == app.project_id).order_by(AIRelease.number.desc()))],
+        'members': [member_out(db, m, settings)
+            for m in db.scalars(select(AIAppMember).where(AIAppMember.project_id == app.project_id))]}
+
+
+def create_router(principal_dependency):
+    router = APIRouter(prefix='/internal/v1/workspace/ai-projects', tags=['ai-releases'])
+    add_routes(router, principal_dependency)
+
+    @router.get('/{project_id}/releases')
+    def listing(project_id: UUID, principal=Depends(principal_dependency), db=Depends(get_db)):
+        settings = enabled()
+        owner(db, principal, project_id)
+        return detail(db, project_id, settings)
+
+    @router.get('/{project_id}/releases/tool-review')
+    def tool_review(project_id: UUID, principal=Depends(principal_dependency), db=Depends(get_db)):
+        settings = enabled()
+        _, binding = owner(db, principal, project_id)
+        _, config, _ = draft_snapshot(db, binding, settings)
+        reference = config.tool_reference
+        row = (db.get(AIToolReview, review_id(binding.project_id, reference))
+               if reference and re.fullmatch(RELEASABLE_REFERENCE, reference) else None)
+        return {'review': review_out(row) if row else None}
+
+    @router.post('/{project_id}/releases/tool-review')
+    def submit_tool_review(project_id: UUID, body: SubmitToolReview, principal=Depends(principal_dependency), db=Depends(get_db)):
+        settings = enabled()
+        env, binding = owner(db, principal, project_id, body.native_owner_id)
+        _, config, current = draft_snapshot(db, binding, settings)
+        if config.tool_reference != body.reference or current.digest() != body.expected_digest:
+            raise HTTPException(409, 'ai_releases_changed')
+        identifier = review_id(binding.project_id, body.reference)
+        row = db.get(AIToolReview, identifier)
+        if not row:
+            row = AIToolReview(id=identifier, project_id=binding.project_id, reference=body.reference,
+                               descriptor=body.descriptor.model_dump(), state='pending', revision=1)
+            db.add(row)
+            audit(db, env, principal, 'tool_review_requested', identifier)
+            db.commit()
+        return {'review': review_out(row)}
+
+    @router.post('/{project_id}/releases')
+    def publish(project_id: UUID, body: Publish, principal=Depends(principal_dependency), db=Depends(get_db)):
+        settings = enabled()
+        env, binding = owner(db, principal, project_id, body.native_owner_id)
+        db.refresh(env, with_for_update=True)
+        versioned = body.number is not None
+        identifier = str(uuid5(NAMESPACE_URL, binding.project_id+'/release/'+str(body.request_id)))
+        prior = db.get(AIRelease, identifier)
+        if prior:
+            trial = db.get(AIProjectTrial, prior.trial_id)
+            if (prior.trial_id != str(body.trial_id) or trial.digest != body.expected_digest or
+                    (versioned and (prior.number, prior.name, prior.description) !=
+                     (body.number, body.name, body.description or None))):
+                raise HTTPException(409, 'ai_releases_request_conflict')
+            return detail(db, project_id, settings)
+        if not versioned and not body.confirm_sponsor:
+            raise HTTPException(409, 'ai_releases_confirmation_required')
+        trial = db.get(AIProjectTrial, str(body.trial_id))
+        if not trial or trial.project_id != binding.project_id or trial.state != 'ready':
+            raise HTTPException(409, 'ai_releases_trial_required')
+        snap = usable(db, trial, settings)
+        reference = release_tool_reference(snap)
+        _, _, current = draft_snapshot(db, binding, settings)
+        if current.digest() != trial.digest or trial.digest != body.expected_digest:
+            raise HTTPException(409, 'ai_releases_trial_required')
+        if body.trial_evidence:
+            evidence = body.trial_evidence
+            session = db.get(AITrialSession, str(evidence.conversation_id))
+            run = db.get(AITrialRun, evidence.message_id)
+            if (not session or session.trial_id != trial.id or session.environment_id != env.id
+                    or not run or run.trial_id != trial.id or run.conversation_id != session.conversation_id):
+                raise HTTPException(409, 'ai_releases_trial_required')
+            if generated_tool(db, snap, trial.project_id) and not db.scalar(
+                select(AuditEvent.id).where(AuditEvent.action == 'ai_trial.tool_completed',
+                    AuditEvent.target_id == trial.id + ':' + evidence.message_id).limit(1)
+            ):
+                raise HTTPException(409, 'ai_releases_trial_required')
+        else:
+            accepted = unseal(trial.encrypted_acceptance, settings) if trial.encrypted_acceptance else {}
+            if accepted.get('outcome') != 'passed':
+                raise HTTPException(409, 'ai_releases_trial_required')
+        review = None
+        if reference:
+            if not versioned and body.confirm_tool_reference != reference:
+                raise HTTPException(409, 'ai_releases_tool_consent_required')
+            review = require_review(db, binding.project_id, reference,
+                                    review_id(binding.project_id, reference), lock=True)
+        app = db.get(AIApplication, binding.project_id)
+        if not app:
+            app = AIApplication(project_id=binding.project_id, budget_micros=body.budget_micros or 0)
+            db.add(app)
+            db.flush()
+        count = db.scalar(select(func.count()).select_from(AIRelease).where(AIRelease.project_id == binding.project_id))
+        if count >= settings.ai_releases_limit:
+            raise HTTPException(409, 'ai_releases_limit')
+        number = body.number
+        if number is None:
+            number = (db.scalar(select(func.max(AIRelease.number)).where(
+                AIRelease.project_id == binding.project_id)) or 0) + 1
+        elif db.scalar(select(AIRelease.id).where(
+                AIRelease.project_id == binding.project_id, AIRelease.number == number)):
+            raise HTTPException(409, 'ai_releases_version_exists')
+        release = AIRelease(id=identifier, project_id=binding.project_id, trial_id=trial.id,
+            tool_review_id=review.id if review else None,
+            request_id=str(body.request_id), number=number,
+            name=body.name or db.get(WorkspaceProject, binding.project_id).name,
+            description=body.description or None)
+        db.add(release)
+        app.active_release_id = identifier
+        if not versioned:
+            app.shared_release_id = identifier
+            app.enabled = True
+        # Publishing never resets accumulated spend or silently changes the existing budget.
+        app.revision += 1
+        audit(db, env, principal, 'published', identifier)
+        if review:
+            audit(db, env, principal, 'tool_authorized', identifier)
+        db.commit()
+        return detail(db, project_id, settings)
+
+    @router.post('/{project_id}/release-selection')
+    def select_release(project_id: UUID, body: ReleaseSelection, principal=Depends(principal_dependency), db=Depends(get_db)):
+        settings = enabled()
+        env, binding = owner(db, principal, project_id, body.native_owner_id)
+        db.refresh(env, with_for_update=True)
+        app = db.get(AIApplication, binding.project_id)
+        release = db.get(AIRelease, str(body.release_id))
+        if not app or not release or release.project_id != binding.project_id:
+            raise HTTPException(404, 'ai_releases_not_found')
+        if app.shared_release_id == release.id:
+            return detail(db, project_id, settings)
+        expected = str(body.expected_shared_release_id) if body.expected_shared_release_id else None
+        if app.shared_release_id != expected:
+            raise HTTPException(409, 'ai_releases_changed')
+        snapshot = usable(db, db.get(AIProjectTrial, release.trial_id), settings)
+        grant = release_tool_grant(db, release, snapshot, lock=True)
+        if grant and not body.confirm_tools:
+            raise HTTPException(409, 'ai_releases_tool_consent_required')
+        app.shared_release_id = release.id
+        app.revision += 1
+        audit(db, env, principal, 'shared_version_selected', release.id)
+        db.commit()
+        return detail(db, project_id, settings)
+
+    @router.post('/{project_id}/access')
+    def access(project_id: UUID, body: AccessUpdate, principal=Depends(principal_dependency), db=Depends(get_db)):
+        settings = enabled()
+        env, _ = owner(db, principal, project_id, body.native_owner_id)
+        db.refresh(env, with_for_update=True)
+        app = db.get(AIApplication, str(project_id))
+        if not app or app.revision != body.expected_revision:
+            raise HTTPException(409, 'ai_releases_changed')
+        app.enabled, app.budget_micros = body.enabled, body.budget_micros
+        app.revision += 1
+        audit(db, env, principal, 'access_updated', app.project_id)
+        db.commit()
+        return detail(db, project_id, settings)
+
+    @router.post('/{project_id}/members')
+    def member(project_id: UUID, body: Member, principal=Depends(principal_dependency), db=Depends(get_db)):
+        settings = enabled()
+        env, _ = owner(db, principal, project_id, body.native_owner_id)
+        if not body.enabled:
+            raise HTTPException(400, 'ai_releases_invalid_request')
+        target = db.scalar(select(UserEnvironment).where(UserEnvironment.issuer == principal.issuer,
+            UserEnvironment.subject == body.subject))
+        app = db.get(AIApplication, str(project_id))
+        if app and app.active_release_id and (not app.shared_release_id or not app.budget_micros):
+            raise HTTPException(409, 'ai_releases_sharing_setup')
+        if (not app or not app.active_release_id or not target or target.id == env.id
+                or target.status in ('deleted', 'suspended') or not allowed(db, target.issuer, target.subject)):
+            raise HTTPException(409, 'ai_releases_member_unavailable')
+        if body.expires_at and utc(body.expires_at) <= now():
+            raise HTTPException(422, 'ai_releases_expiry_invalid')
+        row = db.get(AIAppMember, (str(project_id), target.id))
+        if row and row.native_id != body.native_id:
+            raise HTTPException(409, 'ai_releases_member_unavailable')
+        if not row:
+            if db.scalar(select(func.count()).select_from(AIAppMember).where(
+                    AIAppMember.project_id == str(project_id))) >= settings.ai_releases_member_limit:
+                raise HTTPException(409, 'ai_releases_limit')
+            row = AIAppMember(project_id=str(project_id), environment_id=target.id,
+                native_id=body.native_id, encrypted_label=seal(body.label, settings),
+                state='pending', enabled=True, revision=1,
+                budget_micros=body.budget_micros, expires_at=utc(body.expires_at))
+            db.add(row)
+        elif body.enabled and member_state(row) in ('active', 'pending'):
+            # A repeated invite never changes a live policy or erases its usage.
+            return detail(db, project_id, settings)
+        else:
+            if body.expected_revision != row.revision:
+                raise HTTPException(409, 'ai_releases_changed')
+            row.state, row.enabled = ('pending', True) if body.enabled else ('revoked', False)
+            if body.enabled:
+                row.expires_at = utc(body.expires_at)
+            row.revision += 1
+        if row.native_id != body.native_id:
+            raise HTTPException(409, 'ai_releases_member_unavailable')
+        audit(db, env, principal, 'member_invited' if body.enabled else 'member_revoked',
+            row.project_id+'/'+row.native_id+'@'+str(row.revision))
+        db.commit()
+        return detail(db, project_id, settings)
+
+    @router.post('/{project_id}/members/revoke')
+    def revoke(project_id: UUID, body: Revoke, principal=Depends(principal_dependency), db=Depends(get_db)):
+        settings = enabled()
+        env, _ = owner(db, principal, project_id, body.native_owner_id)
+        row = db.scalar(select(AIAppMember).where(AIAppMember.project_id == str(project_id),
+            AIAppMember.native_id == body.native_id))
+        if not row:
+            raise HTTPException(404, 'ai_releases_member_unavailable')
+        if body.expected_revision is not None and row.revision != body.expected_revision:
+            raise HTTPException(409, 'ai_releases_changed')
+        if not row.enabled and row.state == 'revoked':
+            return detail(db, project_id, settings)
+        row.enabled, row.state = False, 'revoked'
+        row.revision += 1
+        audit(db, env, principal, 'member_revoked', row.project_id+'/'+row.native_id+'@'+str(row.revision))
+        db.commit()
+        return detail(db, project_id, settings)
+
+    @router.post('/{project_id}/launch')
+    def launch(project_id: UUID, body: Owner, principal=Depends(principal_dependency), db=Depends(get_db)):
+        actor, sponsor, app, settings = check_access(db, principal, project_id, body.native_owner_id)
+        db.refresh(sponsor, with_for_update=True)
+        db.refresh(app)
+        release = db.get(AIRelease, app.active_release_id if actor.id == sponsor.id else app.shared_release_id)
+        snap = usable(db, db.get(AIProjectTrial, release.trial_id), settings)
+        release_tool_grant(db, release, snap)
+        identifier = str(uuid5(NAMESPACE_URL, release.id+'/'+actor.id))
+        entry = db.get(AIAppEntry, identifier)
+        if not entry:
+            entry = AIAppEntry(id=identifier, release_id=release.id, environment_id=actor.id, native_id=body.native_owner_id)
+            db.add(entry)
+            audit(db, sponsor, principal, 'entry_prepared', identifier)
+            db.commit()
+        return entry_out(db, entry, release)
+
+    @router.post('/entries/{entry_id}/confirm')
+    def confirm(entry_id: UUID, body: Owner, principal=Depends(principal_dependency), db=Depends(get_db)):
+        entry, release, _, _, _, sponsor, _, _ = entry_access(db, principal, entry_id, body.native_owner_id)
+        if not entry.ready:
+            entry.ready = True
+            audit(db, sponsor, principal, 'entry_ready', entry.id)
+            db.commit()
+        return entry_out(db, entry, release)
+
+    @router.post('/entries/{entry_id}/resolve')
+    def resolve(entry_id: UUID, body: Resolve, principal=Depends(principal_dependency), db=Depends(get_db)):
+        entry, release, trial, snap, actor, sponsor, app, settings = entry_access(db, principal, entry_id, body.native_owner_id)
+        if not entry.ready:
+            raise HTTPException(409, 'ai_releases_not_ready')
+        db.refresh(sponsor, with_for_update=True)
+        previous = db.scalar(select(AIAppRun).where(AIAppRun.conversation_id == str(body.conversation_id)))
+        db.refresh(app)
+        if not previous and actor.id != sponsor.id and release.id != app.shared_release_id:
+            raise HTTPException(409, 'ai_releases_changed')
+        if previous and previous.entry_id != entry.id:
+            raise HTTPException(409, 'ai_releases_session_mismatch')
+        identifier = str(uuid5(NAMESPACE_URL, entry.id+'/'+body.message_id))
+        run = db.get(AIAppRun, identifier)
+        if run and run.conversation_id != str(body.conversation_id):
+            raise HTTPException(409, 'ai_releases_session_mismatch')
+        if not run:
+            run = AIAppRun(id=identifier, entry_id=entry.id, conversation_id=str(body.conversation_id), message_id=body.message_id)
+            db.add(run)
+            audit(db, sponsor, principal, 'run_admitted', identifier)
+            db.commit()
+        expiry = int(run.created_at.replace(tzinfo=run.created_at.tzinfo or timezone.utc).timestamp())+settings.ai_releases_run_seconds
+        token = jwt.encode({'aud':'ai-application', 'sub':actor.subject, 'iss':actor.issuer,
+            'run':run.id, 'entry':entry.id, 'exp':expiry}, settings.librechat_service_token, algorithm='HS256')
+        tool = release_tool_grant(db, release, snap)
+        personal = tool and re.fullmatch(PERSONAL_REFERENCE, tool.reference)
+        binding = db.get(AIProjectBinding, release.project_id) if personal else None
+        return {**entry_out(db, entry, release), 'snapshot':snap.model_dump(mode='json'),
+            'knowledge_revision_id':trial.knowledge_revision_id, 'credential':'sbapp_'+token,
+            'personal_tool': {'reference': tool.reference, 'owner_native_id': binding.native_owner_id} if personal else None,
+            'generated_tool': describe_generated(tool) if tool and not personal else None}
+
+    @router.post('/entries/{entry_id}/tool-admission')
+    async def tool_admission(entry_id: UUID, body: ReleaseToolCall, principal=Depends(principal_dependency), db=Depends(get_db)):
+        _, _, _, _, _, sponsor, _, _ = entry_access(db, principal, entry_id, body.native_owner_id)
+        db.refresh(sponsor, with_for_update=True)
+        db.expire_all()
+        entry, release, _, snap, _, sponsor, _, settings = entry_access(db, principal, entry_id, body.native_owner_id)
+        grant = release_tool_grant(db, release, snap, lock=True)
+        run = db.get(AIAppRun, str(uuid5(NAMESPACE_URL, entry.id+'/'+body.message_id)))
+        if (not grant or not entry.ready or not run or run.conversation_id != str(body.conversation_id)
+                or (now() - utc(run.created_at)).total_seconds() >= settings.ai_releases_run_seconds):
+            raise HTTPException(403, 'ai_releases_access_denied')
+        count = db.scalar(select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == 'ai_release.tool_admitted', AuditEvent.target_id == run.id))
+        from .project_tool_registration import call_limit
+        if count >= call_limit(grant.descriptor.get('generated'), settings):
+            raise HTTPException(429, 'ai_releases_tool_limit')
+        generated = grant.descriptor.get('generated')
+        if (generated is None) != (body.arguments is None):
+            raise HTTPException(422, 'ai_releases_invalid_request')
+        output = None
+        if generated:
+            if generated['engine'] in ('public-json-v1', 'project-http-v1'):
+                from .generated_tools import execute_tool
+                audit(db, sponsor, principal, 'tool_admitted', run.id)
+                db.commit()
+                try:
+                    output = await execute_tool(settings, generated, body.arguments, db=db, environment_id=sponsor.id)
+                    db.expire_all()
+                    entry_access(db, principal, entry_id, body.native_owner_id)
+                    release_tool_grant(db, release, snap)
+                except (ValueError, OSError) as problem:
+                    if str(problem) == 'project_tool_busy':
+                        raise HTTPException(409, 'ai_releases_tool_busy') from None
+                    raise HTTPException(503, 'ai_releases_tool_failed') from None
+                return {'allowed': True, 'text': output}
+            program = generated['program']
+            if program.get('bounds') and db.scalar(select(AuditEvent.id).where(
+                    AuditEvent.action == 'ai_release.tool_input_rejected', AuditEvent.target_id == run.id).limit(1)):
+                return {'allowed': True, 'text': bounds_message(program)}
+            try:
+                output = execute(program, body.arguments)
+            except InputRejected as problem:
+                output = str(problem)
+                audit(db, sponsor, principal, 'tool_input_rejected', run.id)
+        audit(db, sponsor, principal, 'tool_admitted', run.id)
+        db.commit()
+        return {'allowed': True, 'text': output} if generated else {'allowed': True}
+
+    @router.post('/entries/{entry_id}/search')
+    def search(entry_id: UUID, body: Search, principal=Depends(principal_dependency), db=Depends(get_db)):
+        _, release, trial, _, _, _, _, settings = entry_access(db, principal, entry_id)
+        if not trial.knowledge_revision_id:
+            return {'revision_id':None, 'sources':[]}
+        from .knowledge import KnowledgeClient, revision_scope
+        from .models import ProjectKnowledge
+        revision = trial.knowledge_revision_id
+        row = db.get(ProjectKnowledge, revision)
+        if row.chunks == 0:
+            return {'revision_id': revision, 'sources': []}
+        scope = revision_scope(row)
+        from .embedding_admin import runtime_profile
+        try:
+            profile = runtime_profile(db, settings, row.embedding_profile_id)
+            db.commit()
+            result = KnowledgeClient(settings).call('POST', scope, revision,
+                {'query': body.query, 'k': 5, **profile}, query=True)
+        except Exception:
+            raise HTTPException(503, 'ai_releases_knowledge_unavailable') from None
+        db.expire_all()
+        entry_access(db, principal, entry_id)
+        return {'revision_id':revision, 'sources':result['sources']}
+
+    @router.get('/entries/{entry_id}/source')
+    def source(entry_id: UUID, name: str = Query(min_length=1,max_length=124), principal=Depends(principal_dependency), db=Depends(get_db)):
+        _, _, trial, _, _, _, _, settings = entry_access(db, principal, entry_id)
+        from .models import ProjectKnowledge
+        revision = db.get(ProjectKnowledge, trial.knowledge_revision_id) if trial.knowledge_revision_id else None
+        for item in unseal(revision.encrypted_source, settings) if revision else []:
+            if item['name'] == name:
+                return {**item, 'revision_id':revision.id, 'digest':revision.digest}
+        raise HTTPException(404, 'ai_releases_not_found')
+
+    return router

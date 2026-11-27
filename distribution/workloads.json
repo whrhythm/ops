@@ -1,0 +1,250 @@
+[
+  {
+    "namespace": "librechat",
+    "kind": "Deployment",
+    "name": "librechat",
+    "images": {
+      "librechat": "harbor.k3s.local/internal/starbridge-office@sha256:2d6b0d22ce5130ac09491ae698c7f815248925713651dea643b36fc694c5507c"
+    }
+  },
+  {
+    "namespace": "librechat",
+    "kind": "Deployment",
+    "name": "office-scan",
+    "images": {
+      "scan": "harbor.k3s.local/internal/platform-control@sha256:ea84f2bc9ecb18164e9dc08fc1c53675d2a558a6e49c8eb85f1d31e1611a3774",
+      "word-pages": "harbor.k3s.local/internal/office-word-pages@sha256:98aa48c633664a774652885c82688a4ad913099e4dd1cdeeedc3ee9c8fda37f6"
+    }
+  },
+  {
+    "namespace": "librechat",
+    "kind": "Deployment",
+    "name": "office-web-search",
+    "images": {
+      "search": "harbor.k3s.local/internal/starbridge-office@sha256:fe05163c928c6c27e54f415e73247b16d5f8c7032277c5d80607e3a1d717f9c6"
+    }
+  },
+  {
+    "namespace": "librechat",
+    "kind": "Deployment",
+    "name": "starbridge-demo-tool",
+    "images": {
+      "quote": "harbor.k3s.local/internal/starbridge-demo-tool@sha256:7e68d8227c6ba9102bdd63e967f2d7712961c86e73222a114e6919f709ea1d77"
+    }
+  },
+  {
+    "namespace": "librechat",
+    "kind": "StatefulSet",
+    "name": "librechat-mongo",
+    "images": {
+      "mongodb": "harbor.k3s.local/internal/librechat-mongo@sha256:4c3c21dadb6373a36c9c4f95fde0cd9bf62afc1baa2fba38a8ca76ecc8b0b0e3"
+    }
+  },
+  {
+    "namespace": "platform-system",
+    "kind": "Deployment",
+    "name": "agent-worker",
+    "images": {
+      "worker": "harbor.k3s.local/internal/platform-control@sha256:95a614e59e532c8c573ea39d408ed933b1951811818c39f88001d0b68be1469f"
+    }
+  },
+  {
+    "namespace": "platform-system",
+    "kind": "Deployment",
+    "name": "application-controller",
+    "images": {
+      "publisher": "harbor.k3s.local/internal/platform-control@sha256:2850721f2f505fa1f9dd26d8dedcbc2c29f33805d9f5b58cb1b9ba163b3dff65"
+    }
+  },
+  {
+    "namespace": "platform-system",
+    "kind": "Deployment",
+    "name": "knowledge-worker",
+    "images": {
+      "worker": "harbor.k3s.local/internal/platform-control@sha256:d1432799f397c795e9dde6f575447cfac68435892dafebc23cdb39deb319916c"
+    }
+  },
+  {
+    "namespace": "platform-system",
+    "kind": "Deployment",
+    "name": "mcp-gateway",
+    "images": {
+      "gateway": "harbor.k3s.local/internal/platform-control@sha256:fc913232a545f6882c380657ae0b217cbcbcc7462b2ede558ba940346a487ecb"
+    }
+  },
+  {
+    "namespace": "platform-system",
+    "kind": "Deployment",
+    "name": "metering-exporter",
+    "images": {
+      "exporter": "harbor.k3s.local/internal/platform-control@sha256:f9df6ac09b96b17950d66f126b8e134138f87acb0f80e5bb8f77f7b3e873c99b"
+    }
+  },
+  {
+    "namespace": "platform-system",
+    "kind": "Deployment",
+    "name": "metering-receiver",
+    "images": {
+      "receiver": "harbor.k3s.local/internal/platform-meter@sha256:297a628e0e8a92b5deeefb24e543f2420319354367cd5e9842c9935a2dadbee7"
+    }
+  },
+  {
+    "namespace": "platform-system",
+    "kind": "Deployment",
+    "name": "model-billing-controller",
+    "images": {
+      "billing": "harbor.k3s.local/internal/platform-control@sha256:bf35aea502c2690c13ae9d53dc6bbf6bd82d515f73e6deb86bf1721b21bd4560"
+    }
+  },
+  {
+    "namespace": "platform-system",
+    "kind": "Deployment",
+    "name": "openmeter",
+    "images": {
+      "kafka": "harbor.k3s.local/internal/office-v101c-kafka@sha256:a1ae84a694f05f1cc0628eebf060a6d9aa95d9d23d251b4bd5eb6e3e259a6f52",
+      "clickhouse": "harbor.k3s.local/internal/office-v101c-clickhouse@sha256:41938061c7770c0228456fb061ddce93cf1518fad519fec00765f9822b83d0be",
+      "postgres": "harbor.k3s.local/internal/office-v101c-postgres@sha256:38903b41719f419408174e51bd34e657df03ef7103639a64f5ccc9c6b3175a8e",
+      "redis": "harbor.k3s.local/internal/office-v101c-redis@sha256:56e4f286b852235a50017612fcb0022d5f83416a3cca4db6684f69685708813a",
+      "openmeter": "harbor.k3s.local/internal/office-v101c-openmeter@sha256:270b0ac21e1b3092467465cc05c660b7766e871b841e7c9dfaf534dbf234fe2a",
+      "sink": "harbor.k3s.local/internal/office-v101c-openmeter@sha256:270b0ac21e1b3092467465cc05c660b7766e871b841e7c9dfaf534dbf234fe2a"
+    }
+  },
+  {
+    "namespace": "platform-system",
+    "kind": "Deployment",
+    "name": "platform-api",
+    "images": {
+      "api": "harbor.k3s.local/internal/platform-control@sha256:5559bf95aded6747cbe5cd19840ffa7f5aa6c59b9edd4e428ee373668a319d04",
+      "payment-simulator": "harbor.k3s.local/internal/platform-control@sha256:5d2711fdbd594c7e548d539b7c58ee658d2edf07c514c248b5b48647a275ed1c"
+    }
+  },
+  {
+    "namespace": "platform-system",
+    "kind": "Deployment",
+    "name": "platform-cost-meter",
+    "images": {
+      "publisher": "harbor.k3s.local/internal/platform-meter@sha256:297a628e0e8a92b5deeefb24e543f2420319354367cd5e9842c9935a2dadbee7",
+      "native-audit": "harbor.k3s.local/internal/platform-control@sha256:347fce6d4a30dda3ef0f68576724eed2928ce2e80995d092fff0c61340e907fd"
+    }
+  },
+  {
+    "namespace": "platform-system",
+    "kind": "Deployment",
+    "name": "platform-worker",
+    "images": {
+      "worker": "harbor.k3s.local/internal/platform-control@sha256:bf35aea502c2690c13ae9d53dc6bbf6bd82d515f73e6deb86bf1721b21bd4560"
+    }
+  },
+  {
+    "namespace": "platform-system",
+    "kind": "Deployment",
+    "name": "storage-controller",
+    "images": {
+      "storage": "harbor.k3s.local/internal/platform-control@sha256:bf35aea502c2690c13ae9d53dc6bbf6bd82d515f73e6deb86bf1721b21bd4560"
+    }
+  },
+  {
+    "namespace": "platform-system",
+    "kind": "Deployment",
+    "name": "workspace-controller",
+    "images": {
+      "controller": "harbor.k3s.local/internal/platform-control@sha256:03879682c7944359e5438327e867a0662813d709e966b88fc19df09497d9cecd"
+    }
+  },
+  {
+    "namespace": "codeapi",
+    "kind": "Deployment",
+    "name": "codeapi-api",
+    "images": {
+      "api": "harbor.k3s.local/internal/platform-control:office-v101a-codeapi-api.1@sha256:318b95fb7e13de3b1b640f6173be670c88d0d9c5135c85f4fa092ef414d80c5a"
+    }
+  },
+  {
+    "namespace": "codeapi",
+    "kind": "Deployment",
+    "name": "codeapi-egress-gateway",
+    "images": {
+      "egress-gateway": "harbor.k3s.local/internal/platform-control:q1-word-quality-20261124.1@sha256:c8d47fd132f1a46225f00fc1ef0c76259ce7f0b67373848bf80ce3edecf91d22"
+    }
+  },
+  {
+    "namespace": "codeapi",
+    "kind": "Deployment",
+    "name": "codeapi-file-server",
+    "images": {
+      "file-server": "harbor.k3s.local/internal/platform-control:codeapi-20261105.1-files@sha256:f546e7f08d5bf1b917ffe7711c02dd5564589cf58822ff2b58e235e5f837bd03"
+    }
+  },
+  {
+    "namespace": "codeapi",
+    "kind": "Deployment",
+    "name": "codeapi-office-execution-dispatch",
+    "images": {
+      "office-execution-dispatch": "harbor.k3s.local/internal/platform-control:office-v101a-codeapi-worker.1@sha256:e36041d852ab344f7cba9a9b22730ccfaf229b9c8ad56fbbe7cdb88de52be2d1"
+    }
+  },
+  {
+    "namespace": "codeapi",
+    "kind": "Deployment",
+    "name": "codeapi-redis",
+    "images": {
+      "redis": "redis:7.4.7-alpine"
+    }
+  },
+  {
+    "namespace": "codeapi",
+    "kind": "Deployment",
+    "name": "codeapi-sandbox-runner",
+    "images": {
+      "sandbox-runner": "harbor.k3s.local/internal/platform-control:codeapi-20261105.1-runner@sha256:5bb255e5056660620078f2a1abc37ea233a77aecefd87aed9483f787b64ef434"
+    }
+  },
+  {
+    "namespace": "codeapi",
+    "kind": "Deployment",
+    "name": "codeapi-service-worker",
+    "images": {
+      "service-worker": "harbor.k3s.local/internal/platform-control:office-v101a-codeapi-worker.1@sha256:e36041d852ab344f7cba9a9b22730ccfaf229b9c8ad56fbbe7cdb88de52be2d1"
+    }
+  },
+  {
+    "namespace": "codeapi",
+    "kind": "Deployment",
+    "name": "codeapi-tool-call-server",
+    "images": {
+      "tool-call-server": "harbor.k3s.local/internal/platform-control:codeapi-20261105.1-tools@sha256:609c85b6efae0a2026e31025883d5dc6ba2c2c9bc37803b9b8d7dd8f4e1a095e"
+    }
+  },
+  {
+    "namespace": "knowledge",
+    "kind": "Deployment",
+    "name": "knowledge-api",
+    "images": {
+      "api": "harbor.k3s.local/internal/platform-knowledge@sha256:8fcbbfe09cea2cb3a79b72d957d5f32bd1633c26ea4a6d562eb5ca5bf6c7a7fa"
+    }
+  },
+  {
+    "namespace": "knowledge",
+    "kind": "Deployment",
+    "name": "knowledge-postgres",
+    "images": {
+      "postgres": "harbor.k3s.local/internal/platform-knowledge-pg@sha256:a17b491c76e1b3938395ed0dbcb98d71a69b40556a6c2d6296ed2b460c59056d"
+    }
+  },
+  {
+    "namespace": "search-system",
+    "kind": "Deployment",
+    "name": "search-gateway",
+    "images": {
+      "gateway": "harbor.k3s.local/internal/starbridge-search-gateway@sha256:770ee7fb1f19d8112de16791fd3173555e04455199cbc5d1b574fc6bf2fdbece"
+    }
+  },
+  {
+    "namespace": "search-system",
+    "kind": "Deployment",
+    "name": "searxng",
+    "images": {
+      "searxng": "harbor.k3s.local/internal/starbridge-searxng@sha256:a2325ad4b9f8648ef597c22d1df6d7faa0422d998d95bddd4be35c8e203a300f"
+    }
+  }
+]

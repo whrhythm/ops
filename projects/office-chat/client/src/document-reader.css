@@ -1,0 +1,40 @@
+.sb-document-reader {
+  box-sizing: border-box;
+  height: 100%;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  color: rgb(var(--text-primary));
+  background: rgb(var(--surface-primary));
+  font-family: inherit;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+.sb-document-reader article {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 54rem;
+  margin: 0 auto;
+  padding: clamp(1rem, 4%, 2.5rem);
+}
+.sb-document-reader article > :first-child { margin-top: 0; }
+.sb-document-reader :is(h1,h2,h3,h4,h5,h6) { margin: 1.5em 0 .45em; font-weight: 650; line-height: 1.35; }
+.sb-document-reader h1 { font-size: 1.75em; }
+.sb-document-reader h2 { font-size: 1.4em; }
+.sb-document-reader h3 { font-size: 1.18em; }
+.sb-document-reader :is(p,ul,ol,blockquote,pre,hr,.sb-table-scroll) { margin: .85em 0; }
+.sb-document-reader ul { list-style: disc; padding-inline-start: 1.6em; }
+.sb-document-reader ol { list-style: decimal; padding-inline-start: 1.6em; }
+.sb-document-reader li > :is(ol,ul) { margin: .15em 0; }
+.sb-document-reader blockquote { padding-inline-start: 1em; border-inline-start: 3px solid rgb(var(--border-medium)); color: rgb(var(--text-secondary)); }
+.sb-document-reader a { color: rgb(var(--link)); text-decoration: underline; text-underline-offset: .15em; }
+.sb-document-reader .sb-table-scroll, .sb-document-reader pre { max-width: 100%; overflow-x: auto; }
+.sb-document-reader table { border-collapse: collapse; min-width: min(100%, 20rem); }
+.sb-document-reader :is(th,td) { padding: .45em .75em; border: 1px solid rgb(var(--border-medium)); text-align: start; vertical-align: top; }
+.sb-document-reader th, .sb-document-reader :is(pre,code) { background: rgb(var(--surface-secondary)); }
+.sb-document-reader pre { padding: .85em 1em; border-radius: .45em; line-height: 1.55; overflow-wrap: normal; }
+.sb-document-reader code { padding: .1em .25em; border-radius: .2em; }
+.sb-document-reader pre code { padding: 0; }
+.sb-document-reader .sb-plain-text { background: transparent; margin: 0; padding: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sb-document-reader img { max-width: 100%; height: auto; }
+.sb-document-reader hr { border: 0; border-top: 1px solid rgb(var(--border-medium)); }

@@ -1,0 +1,105 @@
+# Disposable acceptance stack. No production credentials, volumes, ports or queues.
+name: starbridge-v101a
+x-common: &common
+  REDIS_HOST: redis
+  REDIS_PORT: '6379'
+  CODEAPI_INTERNAL_SERVICE_TOKEN: isolated-v101a-internal-test-only
+  CODEAPI_HARDENED_SANDBOX_MODE: 'true'
+  CODEAPI_EXECUTION_MANIFEST_PRIVATE_KEY: MC4CAQAwBQYDK2VwBCIEIBoxzSJjQ5jTVyuohHtlD+uDGqv/tZ6hQS2CmxuOg2Wn
+  SANDBOX_ENDPOINT: http://runner:2000/api/v2
+  EGRESS_GATEWAY_URL: http://egress:3190
+  FILE_SERVER_URL: http://files:3000
+  TOOL_CALL_SERVER_URL: http://tools:3033
+  JOB_TIMEOUT: '25000'
+services:
+  redis:
+    image: redis:7-alpine
+    mem_limit: 256m
+  minio:
+    image: docker.1ms.run/bitnamilegacy/minio:2025.5.24-debian-12-r0
+    entrypoint: [/opt/bitnami/minio/bin/minio]
+    environment:
+      MINIO_ROOT_USER: acceptance-only
+      MINIO_ROOT_PASSWORD: isolated-v101a-storage-password
+    command: [server, /tmp/office-data]
+    mem_limit: 512m
+  api:
+    image: harbor.k3s.local/internal/platform-control:codeapi-20261105.1-api
+    volumes: ['../..:/work:ro']
+    working_dir: /work/service
+    command: [bun, run, src/api-server.ts]
+    environment:
+      <<: *common
+      LOCAL_MODE: 'false'
+      CODEAPI_OFFICE_EXECUTION_DISPATCH_REQUIRED: 'true'
+      EGRESS_GATEWAY_URL: '${OFFICE_TEST_EGRESS_URL:-http://egress:3190}'
+      CODEAPI_AUTH_PROVIDER: librechat-jwt
+      CODEAPI_JWT_ISSUER: librechat
+      CODEAPI_JWT_AUDIENCE: codeapi
+      CODEAPI_JWT_ALLOWED_ALGS: EdDSA
+      CODEAPI_JWT_SINGLE_TENANT_ID: isolated-office-test
+      CODEAPI_JWT_JWKS_JSON: '${OFFICE_TEST_JWKS}'
+    mem_limit: 512m
+  worker:
+    image: harbor.k3s.local/internal/platform-control:codeapi-20261105.1-worker
+    volumes: ['../..:/work:ro']
+    working_dir: /work/service
+    command: [bun, run, src/worker-server.ts]
+    environment:
+      <<: *common
+      PYTHON_CONCURRENCY: '1'
+      EGRESS_GATEWAY_URL: '${OFFICE_TEST_EGRESS_URL:-http://egress:3190}'
+      CODEAPI_OFFICE_EXECUTION_DISPATCH_URL: 'http://dispatch:3114'
+      OTHER_CONCURRENCY: '1'
+    mem_limit: 512m
+  dispatch:
+    image: harbor.k3s.local/internal/platform-control:codeapi-20261105.1-api
+    volumes: ['../..:/work:ro']
+    working_dir: /work/service
+    command: [bun, run, src/office-execution-server.ts]
+    environment:
+      <<: *common
+      CODEAPI_OFFICE_EXECUTION_BIND: '0.0.0.0'
+      PYTHON_CONCURRENCY: '1'
+    mem_limit: 384m
+  runner:
+    image: harbor.k3s.local/internal/platform-control:codeapi-20261105.1-runner
+    devices: ['/dev/kvm:/dev/kvm']
+    environment:
+      KVM_ENABLED: 'true'
+      CODEAPI_HARDENED_SANDBOX_MODE: 'true'
+      EGRESS_GATEWAY_URL: '${OFFICE_TEST_EGRESS_URL:-http://egress:3190}'
+      SANDBOX_REQUIRE_EGRESS_MANIFEST: 'true'
+      SANDBOX_EXECUTION_MANIFEST_PUBLIC_KEY: MCowBQYDK2VwAyEAeY3PRoTS3adfU6E3gQUB5hSZdrdMSw6OrKkH4UhYh0U=
+      SANDBOX_ALLOWED_LOCAL_NETWORK_PORT: '3190'
+      SANDBOX_FORWARD_TARGET: '${OFFICE_TEST_FORWARD_TARGET:-egress:3190}'
+      LAUNCHER_RAM_MIB: '512'
+      LAUNCHER_VCPUS: '1'
+    mem_limit: 1500m
+  files:
+    image: harbor.k3s.local/internal/platform-control:codeapi-20261105.1-files
+    environment:
+      <<: *common
+      MINIO_BUCKET: office-acceptance
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: '9000'
+      MINIO_USE_SSL: 'false'
+      MINIO_ACCESS_KEY: acceptance-only
+      MINIO_SECRET_KEY: isolated-v101a-storage-password
+    mem_limit: 256m
+  tools:
+    image: harbor.k3s.local/internal/platform-control:codeapi-20261105.1-tools
+    environment: *common
+    mem_limit: 256m
+  egress:
+    image: harbor.k3s.local/internal/platform-control:codeapi-20261105.1-egress
+    environment:
+      <<: *common
+      CODEAPI_EGRESS_GRANT_SECRET: isolated-v101a-egress-test-secret-32bytes
+      CODEAPI_EGRESS_LEDGER_REQUIRED: 'true'
+      EGRESS_GATEWAY_FILE_SERVER_URL: http://files:3000
+      EGRESS_GATEWAY_TOOL_CALL_SERVER_URL: http://tools:3033
+    mem_limit: 256m
+networks:
+  default:
+    internal: true

@@ -1,0 +1,25 @@
+{
+  "sourceTrees": [
+    {
+      "name": "office-chat",
+      "origin": "LibreChat-office",
+      "base": "e6567c7a681ce67869dce31486a21d3a25d6931b",
+      "files": 6858
+    },
+    {
+      "name": "platform",
+      "origin": "platform-control-p1",
+      "base": "93958600aa0803a21e19c766287ee9794ae3424e",
+      "files": 342
+    },
+    {
+      "name": "codeapi",
+      "origin": "code-interpreter-upstream",
+      "base": "ab716615d7aa436271603d2b42beb1c35f8089c7",
+      "files": 497
+    }
+  ],
+  "supportQuote": "c8983a177945bc9dc07edf3f608060e9110acde2",
+  "pdf": "@modelcontextprotocol/server-pdf@2.0.4 with Starbridge inline adapter",
+  "releaseOverlay": "d8c64ac"
+}

@@ -1,0 +1,14 @@
+# The source context must first pass `npm run frontend` and the R0 checks.
+ARG NODE_RUNTIME_IMAGE=node:24.22.1-alpine
+FROM ${NODE_RUNTIME_IMAGE}
+WORKDIR /app
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3080 SCARF_ANALYTICS=false
+RUN npm install -g npm@11.13.0 --no-audit --no-fund
+COPY --chown=node:node . .
+RUN npm ci --omit=dev --no-audit --no-fund \
+    && npm cache clean --force \
+    && mkdir -p logs uploads skill data client/public/images \
+    && chown -R node:node logs uploads skill data client/public/images
+USER node
+EXPOSE 3080
+CMD ["node", "api/server/index.js"]

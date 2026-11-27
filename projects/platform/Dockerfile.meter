@@ -1,0 +1,5 @@
+FROM harbor.k3s.local/internal/platform-control@sha256:f9df6ac09b96b17950d66f126b8e134138f87acb0f80e5bb8f77f7b3e873c99b
+USER 0
+COPY control_plane/cost_console.py control_plane/supplier_statement.py control_plane/cost_native_audit.py /app/control_plane/
+RUN python -c "from control_plane.cost_console import price_receipt"
+USER 10001:10001

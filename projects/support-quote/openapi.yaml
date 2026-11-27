@@ -1,0 +1,33 @@
+openapi: 3.0.3
+info:
+  title: 星桥演示报价
+  version: 1.0.0
+servers:
+  - url: http://starbridge-demo-tool.librechat.svc.cluster.local
+paths:
+  /v1/quote:
+    get:
+      operationId: lookup_support_quote
+      summary: 查询合成售后套餐的基础报价
+      description: 只读查询。返回基础报价和报价编号，不含政策附加费。
+      parameters:
+        - in: query
+          name: plan
+          required: true
+          description: 合成套餐编号
+          schema:
+            type: string
+            enum: [BLUE-SEAL-3]
+      responses:
+        '200':
+          description: 合成报价
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  base_cny: { type: integer }
+                  quote_id: { type: string }
+                  demo: { type: boolean }
+        '404':
+          description: 未找到合成套餐

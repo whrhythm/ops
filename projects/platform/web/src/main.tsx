@@ -1,0 +1,67 @@
+import { useEffect, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import type { UserManager } from 'oidc-client-ts';
+import { api, desktop, identity, initTransport, setBearer } from './api';
+import type { IdentityConfig } from './api';
+import './style.css';
+import AISettings from './AISettings';
+import MCPSettings from './MCPSettings';
+import EmbeddingSettings from './EmbeddingSettings';
+import ReleaseReviews from './ReleaseReviews';
+import AdminUsers from './AdminUsers';
+import AssistantToolReviews from './AssistantToolReviews';
+import Enterprises from './Enterprises';
+import Costs from './Costs';
+import OfficeSkills from './OfficeSkills';
+const pages = {
+  skills: {nav:'办公 Skill', title:'办公 Skill 管理', description:'审核固定版本、依赖和权限，批准后安装给指定试用账号。'},
+  costs: {nav:'用量与费用', title:'用量与费用', description:'查看实际用量、采购成本与对账状态，管理独立的采购价版本。'},
+  plans: {nav:'套餐与配额', title:'套餐与配额', description:'设置新用户的体验权益，以及付费套餐的价格、模型额度和资源上限。'},
+  models: {nav:'模型与结算', title:'模型与结算', description:'管理聊天和编程模型，明确人民币模型额度到美元预算的折算规则。'},
+  users: {nav:'用户与资源', title:'用户与资源', description:'查看用户的独立空间、实际用量和已生效权益。'},
+  enterprises: {nav:'企业开通', title:'企业开通', description:'审核试用申请，签发或撤销企业授权码。'},
+  reviews: {nav:'待核验', title:'发布核验工作台', description:'对比发布意图与集群状态，核验后恢复任务并保留审计记录。'},
+  mcp: {nav:'MCP 服务', title:'MCP 服务', description:'接入、审核和管理可供用户选择的编程工具服务。'},
+  tools: {nav:'工具审核', title:'智能体工具审核', description:'审核个人工具的固定版本和查询范围。'},
+  embedding: {nav:'知识库模型', title:'知识库模型', description:'管理知识索引使用的本地与外部 Embedding 模型。'},
+} as const;
+function App() {
+  const [manager,setManager]=useState<UserManager>();
+  const [ready,setReady]=useState(false);
+  const [signedIn,setSignedIn]=useState(false);
+  const [admin,setAdmin]=useState(false);
+  const [enterprisesEnabled,setEnterprisesEnabled]=useState(false);
+  const [costsEnabled,setCostsEnabled]=useState(false);
+  const [officeSkillsEnabled,setOfficeSkillsEnabled]=useState(false);
+  const [page,setPage]=useState<keyof typeof pages>('plans');
+  const [error,setError]=useState('');
+  const [busy,setBusy]=useState(false);
+  const [dirty,setDirty]=useState(false);
+  async function perform(action:()=>Promise<unknown>){setError('');setBusy(true);try{await action();}catch(e){setError(e instanceof Error?e.message:'操作未完成。');}finally{setBusy(false);}}
+  useEffect(()=>{void perform(async()=>{
+    await initTransport();const config=await api<IdentityConfig>('/v1/config');
+    setEnterprisesEnabled(config.enterprise_enabled === true);
+    setCostsEnabled(config.cost_console_enabled === true);
+    setOfficeSkillsEnabled(config.office_skills_enabled === true);
+    if(desktop){setReady(true);return;}
+    if(!config.issuer||!config.client_id)throw new Error('请先完成统一登录配置。');
+    const auth=identity(config);setManager(auth);
+    const query=new URLSearchParams(location.search);
+    if(query.has('code')&&query.has('state')){
+      const user=await auth.signinRedirectCallback(location.href);
+      history.replaceState({},'', '/');setBearer(user.access_token);
+      const me=await api<{platform_admin:boolean}>('/v1/me');setAdmin(me.platform_admin);setSignedIn(true);
+    }
+    setReady(true);
+  });},[]);
+  function navigate(next:keyof typeof pages){if(next===page)return;if(dirty&&!window.confirm('有尚未保存的配置，确定放弃修改并切换页面吗？'))return;setDirty(false);setPage(next);}
+  return <div className="shell"><aside><div className="brand">◈ <strong>星桥</strong></div><div className="aside-caption">管理员控制台</div>
+    <nav aria-label="管理导航">{signedIn&&admin&&Object.entries(pages).filter(([key])=>(key!=='enterprises'||enterprisesEnabled)&&(key!=='costs'||costsEnabled)&&(key!=='skills'||officeSkillsEnabled)).map(([key,value])=><button key={key} className={`nav ${page===key?'active':''}`} aria-current={page===key?'page':undefined} onClick={()=>navigate(key as keyof typeof pages)}>{value.nav}</button>)}</nav><div className="aside-footer">统一管理 · 用户独立空间</div></aside>
+    <main><header><div><div className="eyebrow">平台管理</div><h1>{pages[page].title}</h1><p>{pages[page].description}</p></div>{signedIn&&<button className="subtle" onClick={()=>{if(!dirty||window.confirm('放弃未保存的修改并退出？'))void manager?.signoutRedirect();}}>退出登录</button>}</header>
+    {error&&<div className="error" role="alert">{error}</div>}
+    {!signedIn?<section className="panel welcome"><h2>登录管理平台</h2><p>{desktop?'请通过浏览器完成管理员登录。':'使用管理员账号管理用户、套餐与平台服务。'}</p><button disabled={!ready||!manager||busy} onClick={()=>void perform(async()=>manager?.signinRedirect())}>使用 Authentik 登录</button></section>:
+    !admin?<section className="panel"><h2>这里是管理员控制台</h2><p>请在 LibreChat 使用聊天、我的空间和应用管理。个人空间会在首次登录时自动准备，无需在此创建。</p></section>:
+    page==='skills'?<OfficeSkills/>:page==='costs'?<Costs onDirty={setDirty}/>:page==='users'?<AdminUsers/>:page==='enterprises'?<Enterprises/>:page==='reviews'?<ReleaseReviews/>:page==='mcp'?<MCPSettings/>:page==='tools'?<AssistantToolReviews/>:page==='embedding'?<EmbeddingSettings/>:<AISettings key={page} view={page} onDirty={setDirty}/>}
+    </main></div>;
+}
+createRoot(document.getElementById('root')!).render(<App/>);
